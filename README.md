@@ -1,153 +1,285 @@
 ## Jarkom-Modul-2-2026-K-53
 Data Communication and Computer Networks Practicum
 
-### Soal 1 :
+> Konfigurasi node Docker di GNS3 hilang saat node di-restart. Karena itu semua konfigurasi disimpan sebagai script di `/root` pada masing-masing node, lalu dijalankan dengan `bash /root/<nama>.sh`.
+
+### Soal 1 : Konfigurasi IP Address dan Default Gateway
 
 ![](assets/Topologi.png)
 
-1. Router (rootkit)
-Buka konsol rootkit, lalu ketik perintah berikut:
+Pemetaan interface rootkit terhadap switch:
+
+| Interface | Terhubung ke | Node                                       | Subnet           |
+|-----------|--------------|--------------------------------------------|------------------|
+| eth0      | NAT          | -                                          | 192.168.122.0/24 |
+| eth1      | Switch1      | prab, tedd, obladi, desmond, oblada, molly | 10.90.2.0/24     |
+| eth2      | Switch4      | abbey                                      | 10.90.4.0/24     |
+| eth3      | Switch5      | penny                                      | 10.90.3.0/24     |
+| eth4      | Switch6      | alpha, beta, gamma                         | 10.90.1.0/24     |
+| eth5      | Switch7      | delta, epsilon                             | 10.90.5.0/24     |
+
+#### 1. Router (rootkit)
+
+Buka konsol rootkit, lalu jalankan:
 ```bash
-# Memasang IP dan mengaktifkan interface untuk semua subnet
+cat > /root/rootkit-ip.sh << 'EOF'
+# Bersihkan IP lama supaya script aman dijalankan berulang
+for i in 1 2 3 4 5; do ip addr flush dev eth$i; done
+
+# Pasang IP untuk semua subnet internal
 ip addr add 10.90.2.1/24 dev eth1
 ip addr add 10.90.4.1/24 dev eth2
 ip addr add 10.90.3.1/24 dev eth3
 ip addr add 10.90.1.1/24 dev eth4
 ip addr add 10.90.5.1/24 dev eth5
 
-ip link set eth1 up
-ip link set eth2 up
-ip link set eth3 up
-ip link set eth4 up
-ip link set eth5 up
+# Aktifkan interface
+for i in 1 2 3 4 5; do ip link set eth$i up; done
 
-# Memastikan IP Forwarding aktif
+# Aktifkan IP forwarding
 sysctl -w net.ipv4.ip_forward=1
+EOF
+
+bash /root/rootkit-ip.sh
 ```
-2. Sayap Kiri (alpha, beta, gamma) - Subnet 10.90.1.x (Gateway: 10.90.1.1)\
+Verifikasi (setiap interface harus punya subnet yang berbeda):
+```bash
+ip -br addr
+ip route
+```
+
+#### 2. Sayap Kiri (alpha, beta, gamma) - Subnet 10.90.1.x (Gateway: 10.90.1.1)
+
 alpha:
 ```bash
+cat > /root/alpha.sh << 'EOF'
 ip addr flush dev eth0
 ip addr add 10.90.1.2/24 dev eth0
 ip link set eth0 up
-ip route add default via 10.90.1.1
+ip route replace default via 10.90.1.1
+EOF
+
+bash /root/alpha.sh
 ```
 beta:
-```Bash
+```bash
+cat > /root/beta.sh << 'EOF'
 ip addr flush dev eth0
 ip addr add 10.90.1.3/24 dev eth0
 ip link set eth0 up
-ip route add default via 10.90.1.1
+ip route replace default via 10.90.1.1
+EOF
+
+bash /root/beta.sh
 ```
 gamma:
-```Bash
+```bash
+cat > /root/gamma.sh << 'EOF'
 ip addr flush dev eth0
 ip addr add 10.90.1.4/24 dev eth0
 ip link set eth0 up
-ip route add default via 10.90.1.1
+ip route replace default via 10.90.1.1
+EOF
+
+bash /root/gamma.sh
 ```
-3. Sayap Kanan (delta, epsilon) - Subnet 10.90.5.x (Gateway: 10.90.5.1)\
+
+#### 3. Sayap Kanan (delta, epsilon) - Subnet 10.90.5.x (Gateway: 10.90.5.1)
+
 delta:
-```Bash
+```bash
+cat > /root/delta.sh << 'EOF'
 ip addr flush dev eth0
 ip addr add 10.90.5.2/24 dev eth0
 ip link set eth0 up
-ip route add default via 10.90.5.1
+ip route replace default via 10.90.5.1
+EOF
+
+bash /root/delta.sh
 ```
 epsilon:
-```Bash
+```bash
+cat > /root/epsilon.sh << 'EOF'
 ip addr flush dev eth0
 ip addr add 10.90.5.3/24 dev eth0
 ip link set eth0 up
-ip route add default via 10.90.5.1
+ip route replace default via 10.90.5.1
+EOF
+
+bash /root/epsilon.sh
 ```
-4. Gerbang Penyaring (abbey, penny)\
+
+#### 4. Gerbang Penyaring (abbey, penny)
+
 abbey (Subnet 10.90.4.x | Gateway: 10.90.4.1):
-```Bash
+```bash
+cat > /root/abbey.sh << 'EOF'
 ip addr flush dev eth0
 ip addr add 10.90.4.2/24 dev eth0
 ip link set eth0 up
-ip route add default via 10.90.4.1
+ip route replace default via 10.90.4.1
+EOF
+
+bash /root/abbey.sh
 ```
 penny (Subnet 10.90.3.x | Gateway: 10.90.3.1):
-```Bash
+```bash
+cat > /root/penny.sh << 'EOF'
 ip addr flush dev eth0
 ip addr add 10.90.3.2/24 dev eth0
 ip link set eth0 up
-ip route add default via 10.90.3.1
+ip route replace default via 10.90.3.1
+EOF
+
+bash /root/penny.sh
 ```
-5. Area Bawah (prab, tedd, obladi, desmond, oblada, molly) - Subnet 10.90.2.x (Gateway: 10.90.2.1)\
+
+#### 5. Area Bawah (prab, tedd, obladi, desmond, oblada, molly) - Subnet 10.90.2.x (Gateway: 10.90.2.1)
+
 prab:
-```Bash
+```bash
+cat > /root/prab.sh << 'EOF'
 ip addr flush dev eth0
 ip addr add 10.90.2.2/24 dev eth0
 ip link set eth0 up
-ip route add default via 10.90.2.1
+ip route replace default via 10.90.2.1
+EOF
+
+bash /root/prab.sh
 ```
 tedd:
-```Bash
+```bash
+cat > /root/tedd.sh << 'EOF'
 ip addr flush dev eth0
 ip addr add 10.90.2.3/24 dev eth0
 ip link set eth0 up
-ip route add default via 10.90.2.1
+ip route replace default via 10.90.2.1
+EOF
+
+bash /root/tedd.sh
 ```
 obladi:
-```Bash
+```bash
+cat > /root/obladi.sh << 'EOF'
 ip addr flush dev eth0
 ip addr add 10.90.2.4/24 dev eth0
 ip link set eth0 up
-ip route add default via 10.90.2.1
+ip route replace default via 10.90.2.1
+EOF
+
+bash /root/obladi.sh
 ```
 desmond:
-```Bash
+```bash
+cat > /root/desmond.sh << 'EOF'
 ip addr flush dev eth0
 ip addr add 10.90.2.5/24 dev eth0
 ip link set eth0 up
-ip route add default via 10.90.2.1
+ip route replace default via 10.90.2.1
+EOF
+
+bash /root/desmond.sh
 ```
 oblada:
-```Bash
+```bash
+cat > /root/oblada.sh << 'EOF'
 ip addr flush dev eth0
 ip addr add 10.90.2.6/24 dev eth0
 ip link set eth0 up
-ip route add default via 10.90.2.1
+ip route replace default via 10.90.2.1
+EOF
+
+bash /root/oblada.sh
 ```
 molly:
-```Bash
+```bash
+cat > /root/molly.sh << 'EOF'
 ip addr flush dev eth0
 ip addr add 10.90.2.7/24 dev eth0
 ip link set eth0 up
-ip route add default via 10.90.2.1
+ip route replace default via 10.90.2.1
+EOF
+
+bash /root/molly.sh
 ```
-### Soal 2 : Konfigurasi NAT & Akses Internet\
-Langkah 1: Konfigurasi pada Router (rootkit)\
-Buka konsol rootkit, lalu kita jalankan perintah berikut untuk mengaktifkan masquerading (NAT) dan meneruskan paket data ke semua interface internal (eth1 sampai eth5):
+
+#### Verifikasi Soal 1
+
+Dari masing-masing node, ping gateway-nya. Contoh dari alpha:
 ```bash
-# Memasang IP secara manual dari jaringan NAT GNS3
+ping -c 3 10.90.1.1
+```
+
+---
+
+### Soal 2 : Konfigurasi NAT & Akses Internet
+
+Buka konsol rootkit, aktifkan interface WAN (`eth0`) ke jaringan NAT GNS3, lalu konfigurasikan masquerade agar semua host internal bisa menjangkau internet publik menggunakan IP address. Policy `FORWARD` bawaan sudah `ACCEPT`, jadi aturan `FORWARD` per interface tidak diperlukan.
+
+```bash
+cat > /root/rootkit-nat.sh << 'EOF'
+# Interface WAN (jaringan NAT GNS3)
+ip addr flush dev eth0
 ip addr add 192.168.122.100/24 dev eth0
 ip link set eth0 up
-ip route add default via 192.168.122.1
+ip route replace default via 192.168.122.1
 
-# Konfigurasi iptables untuk NAT / Masquerading
+# NAT / Masquerade untuk semua subnet internal
+iptables -t nat -F POSTROUTING
 iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
-iptables -A FORWARD -i eth0 -o eth1 -j ACCEPT
-iptables -A FORWARD -i eth1 -o eth0 -j ACCEPT
-iptables -A FORWARD -i eth0 -o eth2 -j ACCEPT
-iptables -A FORWARD -i eth2 -o eth0 -j ACCEPT
-iptables -A FORWARD -i eth0 -o eth3 -j ACCEPT
-iptables -A FORWARD -i eth0 -o eth4 -j ACCEPT
-iptables -A FORWARD -i eth0 -o eth5 -j ACCEPT
-```
-### Soal 3 : Routing Internal & Resolver Awal\
-Kita memastikan setiap host non-router menambahkan resolver sementara 192.168.122.1 pada file /etc/resolv.conf agar akses untuk mengunduh paket instalasi dari internet dapat tersedia sejak awal.
-```bash
-# Uji ping ke gateway dari klien (alpha)
-ping -c 3 10.90.1.1
+EOF
 
-# Pengaturan resolver dan uji akses internet
+bash /root/rootkit-nat.sh
+```
+Verifikasi di rootkit:
+```bash
+ip -br addr
+ip route
+iptables -t nat -L POSTROUTING -n -v
+iptables -L FORWARD -n | head -1     # harus: policy ACCEPT
+sysctl net.ipv4.ip_forward           # harus: = 1
+ping -c 3 192.168.122.1
+ping -c 3 8.8.8.8
+```
+Verifikasi dari klien (misalnya alpha), menggunakan IP address:
+```bash
+ping -c 3 8.8.8.8
+```
+
+> Jika rootkit di-restart, jalankan ulang keduanya: `bash /root/rootkit-ip.sh` lalu `bash /root/rootkit-nat.sh`.
+
+---
+
+### Soal 3 : Routing Internal & Resolver Awal
+
+Pastikan seluruh node bisa saling terhubung lewat rootkit, lalu tambahkan resolver sementara `192.168.122.1` pada `/etc/resolv.conf` di setiap node non-router (alpha, beta, gamma, delta, epsilon, prab, tedd, abbey, penny, obladi, desmond, oblada, molly) agar paket instalasi bisa diunduh dari internet sejak awal.
+
+Jalankan di setiap node non-router:
+```bash
+cat > /root/resolver-awal.sh << 'EOF'
 echo "nameserver 192.168.122.1" > /etc/resolv.conf
+EOF
+
+bash /root/resolver-awal.sh
+```
+
+Uji routing internal antar subnet, contoh dari alpha:
+```bash
+ping -c 3 10.90.1.1     # gateway
+ping -c 3 10.90.5.2     # delta (sayap kanan)
+ping -c 3 10.90.4.2     # abbey
+ping -c 3 10.90.3.2     # penny
+ping -c 3 10.90.2.2     # prab
+```
+
+Uji akses internet menggunakan nama domain:
+```bash
 ping -c 3 google.com
 ```
+
+![](assets/alpha-ping-internet.png)
+
+> Urutan resolver ini akan diganti di Soal 4 menjadi prab → tedd → 192.168.122.1 setelah DNS internal hidup.
 ![](assets/alpha-ping-internet.png)
 
 ### Soal 4 : Konfigurasi DNS Server Master-Slave
@@ -680,17 +812,116 @@ Tunggu beberapa detik, lalu cek kembali:
 dig @10.90.2.2 k53.com SOA +short
 dig @10.90.2.3 k53.com SOA +short
 ```
-Serial di prab dan tedd harus sama-sama `2026092903`. Kalau tedd belum ikut, paksa transfer di tedd:
-```bash
-rndc retransfer k53.com
-```
-
+Serial di prab dan tedd harus sama-sama `2026092903`.
 > Serial terbaru sekarang `2026092903`. Setiap mengubah zona di soal berikutnya, naikkan serial lagi (misalnya `2026092904`) supaya tedd ikut tersinkron.
 
-#### Verifikasi akhir
+### Soal 7 : Record vault, core, dan CNAME
 
-Screenshot untuk laporan:
-1. Output dua perintah `dig ... SOA +short` di Langkah 1 dengan serial sama
-2. `rndc zonestatus k53.com` di prab dan tedd
-3. `ls -l /var/cache/bind/k53.com` di tedd
-4. `dig @10.90.2.2 k53.com AXFR` dari tedd
+Tambahkan di zona `k53.com`:
+- `vault.k53.com` → A record ke obladi dan desmond (area vault, web statis)
+- `core.k53.com` → A record ke oblada dan molly (area core, web dinamis)
+- `www.k53.com` → CNAME ke `penny.k53.com`
+- `static.k53.com` → CNAME ke `abbey.k53.com`
+
+Satu nama dengan dua A record membuat DNS mengembalikan dua IP sekaligus (round-robin).
+
+#### Langkah 1 : Update zona di prab (ns1)
+
+Tulis ulang zona dengan serial `2026092904` supaya tedd ikut tersinkron:
+```bash
+cat > /etc/bind/k53/k53.com << 'EOF'
+$TTL 604800
+@   IN  SOA prab.k53.com. root.k53.com. (
+        2026092904 ; Serial
+        604800     ; Refresh
+        86400      ; Retry
+        2419200    ; Expire
+        604800 )   ; Negative Cache TTL
+
+@       IN  NS  prab.k53.com.
+@       IN  NS  tedd.k53.com.
+
+; Soal 4
+prab    IN  A   10.90.2.2
+tedd    IN  A   10.90.2.3
+@       IN  A   10.90.3.2
+
+; Soal 5
+rootkit IN  A   10.90.2.1
+alpha   IN  A   10.90.1.2
+beta    IN  A   10.90.1.3
+gamma   IN  A   10.90.1.4
+delta   IN  A   10.90.5.2
+epsilon IN  A   10.90.5.3
+abbey   IN  A   10.90.4.2
+penny   IN  A   10.90.3.2
+obladi  IN  A   10.90.2.4
+desmond IN  A   10.90.2.5
+oblada  IN  A   10.90.2.6
+molly   IN  A   10.90.2.7
+
+; Soal 7
+vault   IN  A   10.90.2.4
+vault   IN  A   10.90.2.5
+core    IN  A   10.90.2.6
+core    IN  A   10.90.2.7
+www     IN  CNAME   penny.k53.com.
+static  IN  CNAME   abbey.k53.com.
+EOF
+```
+Cek sintaks zona, lalu reload:
+```bash
+named-checkzone k53.com /etc/bind/k53/k53.com
+kill -HUP $(pidof named)
+```
+
+#### Langkah 2 : Pastikan tedd tersinkron
+
+Cek serial di kedua server, harus sama-sama `2026092904`:
+```bash
+dig @10.90.2.2 k53.com SOA +short
+dig @10.90.2.3 k53.com SOA +short
+```
+Kalau tedd masih tertinggal, jalankan di tedd:
+```bash
+pkill named
+rm -f /var/cache/bind/k53.com
+sleep 1
+named
+```
+
+#### Langkah 3 : Verifikasi dari dua klien berbeda
+
+Jalankan di alpha, lalu ulangi di delta:
+```bash
+echo "== vault =="
+dig +short vault.k53.com
+echo "== core =="
+dig +short core.k53.com
+echo "== www =="
+dig +short www.k53.com
+echo "== static =="
+dig +short static.k53.com
+```
+Hasil yang benar (urutan dua IP boleh berbeda):
+```
+== vault ==
+10.90.2.4
+10.90.2.5
+== core ==
+10.90.2.6
+10.90.2.7
+== www ==
+penny.k53.com.
+10.90.3.2
+== static ==
+abbey.k53.com.
+10.90.4.2
+```
+
+Pastikan tedd juga menjawab dengan benar dan authoritative:
+```bash
+dig @10.90.2.3 www.k53.com | grep -E "flags|CNAME"
+dig @10.90.2.3 vault.k53.com +short
+```
+Flag harus memuat `aa`, dan `www` harus menampilkan CNAME ke `penny.k53.com.`.
