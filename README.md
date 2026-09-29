@@ -1,7 +1,7 @@
 ## Jarkom-Modul-2-2026-K-53
 Data Communication and Computer Networks Practicum
 
-###Soal 1 :
+### Soal 1 :
 
 ![](assets/Topologi.png)
 
@@ -119,7 +119,7 @@ ip addr add 10.90.2.7/24 dev eth0
 ip link set eth0 up
 ip route add default via 10.90.2.1
 ```
-###Soal 2 : Konfigurasi NAT & Akses Internet\
+### Soal 2 : Konfigurasi NAT & Akses Internet\
 Langkah 1: Konfigurasi pada Router (rootkit)\
 Buka konsol rootkit, lalu kita jalankan perintah berikut untuk mengaktifkan masquerading (NAT) dan meneruskan paket data ke semua interface internal (eth1 sampai eth5):
 ```bash
