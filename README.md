@@ -138,9 +138,13 @@ iptables -A FORWARD -i eth0 -o eth3 -j ACCEPT
 iptables -A FORWARD -i eth0 -o eth4 -j ACCEPT
 iptables -A FORWARD -i eth0 -o eth5 -j ACCEPT
 ```
-Langkah 2: Verifikasi Akses Internet pada Host Klien\
-Kita memastikan setiap host non-router menambahkan resolver sementara 192.168.122.1 pada file /etc/resolv.conf agar akses untuk mengunduh paket instalasi dari internet dapat tersedia sejak awal. Buka konsol salah satu klien (misalnya alpha), lalu ketik:
+### Soal 3 : Routing Internal & Resolver Awal\
+Kita memastikan setiap host non-router menambahkan resolver sementara 192.168.122.1 pada file /etc/resolv.conf agar akses untuk mengunduh paket instalasi dari internet dapat tersedia sejak awal.
 ```bash
+# Uji ping ke gateway dari klien (alpha)
+ping -c 3 10.90.1.1
+
+# Pengaturan resolver dan uji akses internet
 echo "nameserver 192.168.122.1" > /etc/resolv.conf
 ping -c 3 google.com
 ```
