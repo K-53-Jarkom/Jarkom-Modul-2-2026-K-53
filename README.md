@@ -21,69 +21,95 @@ sysctl -w net.ipv4.ip_forward=1
 2. Sayap Kiri (alpha, beta, gamma) - Subnet 10.90.1.x (Gateway: 10.90.1.1)
 alpha:
 ```bash
-echo -e "auto eth0\niface eth0 inet static\n    address 10.90.1.2\n    netmask 255.255.255.0\n    gateway 10.90.1.1" > /etc/network/interfaces
-/etc/init.d/networking restart || (ip addr add 10.90.1.2/24 dev eth0 && ip route add default via 10.90.1.1)
+ip addr flush dev eth0
+ip addr add 10.90.1.2/24 dev eth0
+ip link set eth0 up
+ip route add default via 10.90.1.1
 ```
 beta:
 ```Bash
-echo -e "auto eth0\niface eth0 inet static\n    address 10.90.1.3\n    netmask 255.255.255.0\n    gateway 10.90.1.1" > /etc/network/interfaces
-/etc/init.d/networking restart || (ip addr add 10.90.1.3/24 dev eth0 && ip route add default via 10.90.1.1)
+ip addr flush dev eth0
+ip addr add 10.90.1.3/24 dev eth0
+ip link set eth0 up
+ip route add default via 10.90.1.1
 ```
 gamma:
 ```Bash
-echo -e "auto eth0\niface eth0 inet static\n    address 10.90.1.4\n    netmask 255.255.255.0\n    gateway 10.90.1.1" > /etc/network/interfaces
-/etc/init.d/networking restart || (ip addr add 10.90.1.4/24 dev eth0 && ip route add default via 10.90.1.1)
+ip addr flush dev eth0
+ip addr add 10.90.1.4/24 dev eth0
+ip link set eth0 up
+ip route add default via 10.90.1.1
 ```
 3. Sayap Kanan (delta, epsilon) - Subnet 10.90.5.x (Gateway: 10.90.5.1)
 delta:
 ```Bash
-echo -e "auto eth0\niface eth0 inet static\n    address 10.90.5.2\n    netmask 255.255.255.0\n    gateway 10.90.5.1" > /etc/network/interfaces
-/etc/init.d/networking restart || (ip addr add 10.90.5.2/24 dev eth0 && ip route add default via 10.90.5.1)
+ip addr flush dev eth0
+ip addr add 10.90.5.2/24 dev eth0
+ip link set eth0 up
+ip route add default via 10.90.5.1
 ```
 epsilon:
 ```Bash
-echo -e "auto eth0\niface eth0 inet static\n    address 10.90.5.3\n    netmask 255.255.255.0\n    gateway 10.90.5.1" > /etc/network/interfaces
-/etc/init.d/networking restart || (ip addr add 10.90.5.3/24 dev eth0 && ip route add default via 10.90.5.1)
+ip addr flush dev eth0
+ip addr add 10.90.5.3/24 dev eth0
+ip link set eth0 up
+ip route add default via 10.90.5.1
 ```
 4. Gerbang Penyaring (abbey, penny)
 abbey (Subnet 10.90.4.x | Gateway: 10.90.4.1):
 ```Bash
-echo -e "auto eth0\niface eth0 inet static\n    address 10.90.4.2\n    netmask 255.255.255.0\n    gateway 10.90.4.1" > /etc/network/interfaces
-/etc/init.d/networking restart || (ip addr add 10.90.4.2/24 dev eth0 && ip route add default via 10.90.4.1)
+ip addr flush dev eth0
+ip addr add 10.90.4.2/24 dev eth0
+ip link set eth0 up
+ip route add default via 10.90.4.1
 ```
 penny (Subnet 10.90.3.x | Gateway: 10.90.3.1):
 ```Bash
-echo -e "auto eth0\niface eth0 inet static\n    address 10.90.3.2\n    netmask 255.255.255.0\n    gateway 10.90.3.1" > /etc/network/interfaces
-/etc/init.d/networking restart || (ip addr add 10.90.3.2/24 dev eth0 && ip route add default via 10.90.3.1)
+ip addr flush dev eth0
+ip addr add 10.90.3.2/24 dev eth0
+ip link set eth0 up
+ip route add default via 10.90.3.1
 ```
 5. Area Bawah (prab, tedd, obladi, desmond, oblada, molly) - Subnet 10.90.2.x (Gateway: 10.90.2.1)
 prab:
 ```Bash
-echo -e "auto eth0\niface eth0 inet static\n    address 10.90.2.2\n    netmask 255.255.255.0\n    gateway 10.90.2.1" > /etc/network/interfaces
-/etc/init.d/networking restart || (ip addr add 10.90.2.2/24 dev eth0 && ip route add default via 10.90.2.1)
+ip addr flush dev eth0
+ip addr add 10.90.2.2/24 dev eth0
+ip link set eth0 up
+ip route add default via 10.90.2.1
 ```
 tedd:
 ```Bash
-echo -e "auto eth0\niface eth0 inet static\n    address 10.90.2.3\n    netmask 255.255.255.0\n    gateway 10.90.2.1" > /etc/network/interfaces
-/etc/init.d/networking restart || (ip addr add 10.90.2.3/24 dev eth0 && ip route add default via 10.90.2.1)
+ip addr flush dev eth0
+ip addr add 10.90.2.3/24 dev eth0
+ip link set eth0 up
+ip route add default via 10.90.2.1
 ```
 obladi:
 ```Bash
-echo -e "auto eth0\niface eth0 inet static\n    address 10.90.2.4\n    netmask 255.255.255.0\n    gateway 10.90.2.1" > /etc/network/interfaces
-/etc/init.d/networking restart || (ip addr add 10.90.2.4/24 dev eth0 && ip route add default via 10.90.2.1)
+ip addr flush dev eth0
+ip addr add 10.90.2.4/24 dev eth0
+ip link set eth0 up
+ip route add default via 10.90.2.1
 ```
 desmond:
 ```Bash
-echo -e "auto eth0\niface eth0 inet static\n    address 10.90.2.5\n    netmask 255.255.255.0\n    gateway 10.90.2.1" > /etc/network/interfaces
-/etc/init.d/networking restart || (ip addr add 10.90.2.5/24 dev eth0 && ip route add default via 10.90.2.1)
+ip addr flush dev eth0
+ip addr add 10.90.2.5/24 dev eth0
+ip link set eth0 up
+ip route add default via 10.90.2.1
 ```
 oblada:
 ```Bash
-echo -e "auto eth0\niface eth0 inet static\n    address 10.90.2.6\n    netmask 255.255.255.0\n    gateway 10.90.2.1" > /etc/network/interfaces
-/etc/init.d/networking restart || (ip addr add 10.90.2.6/24 dev eth0 && ip route add default via 10.90.2.1)
+ip addr flush dev eth0
+ip addr add 10.90.2.6/24 dev eth0
+ip link set eth0 up
+ip route add default via 10.90.2.1
 ```
 molly:
 ```Bash
-echo -e "auto eth0\niface eth0 inet static\n    address 10.90.2.7\n    netmask 255.255.255.0\n    gateway 10.90.2.1" > /etc/network/interfaces
-/etc/init.d/networking restart || (ip addr add 10.90.2.7/24 dev eth0 && ip route add default via 10.90.2.1)
+ip addr flush dev eth0
+ip addr add 10.90.2.7/24 dev eth0
+ip link set eth0 up
+ip route add default via 10.90.2.1
 ```
