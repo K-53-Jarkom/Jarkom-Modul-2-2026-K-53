@@ -301,3 +301,309 @@ ping -c 2 google.com
 ```
 ![](assets/ping-google-1.png)
 ![](assets/ping-google-2.png)
+
+### Soal 5 : Hostname dan Domain Setiap Entitas
+
+Setiap node diberi hostname sesuai glosarium, lalu dibuatkan domain `<nama>.k53.com` di zona DNS prab. Node prab dan tedd dikecualikan dari pembuatan A record baru karena record mereka sudah dibuat di Soal 4, tetapi hostname keduanya tetap diatur.
+
+| Node    | IP         | Domain            |
+|---------|------------|-------------------|
+| rootkit | 10.90.2.1  | rootkit.k53.com   |
+| alpha   | 10.90.1.2  | alpha.k53.com     |
+| beta    | 10.90.1.3  | beta.k53.com      |
+| gamma   | 10.90.1.4  | gamma.k53.com     |
+| delta   | 10.90.5.2  | delta.k53.com     |
+| epsilon | 10.90.5.3  | epsilon.k53.com   |
+| abbey   | 10.90.4.2  | abbey.k53.com     |
+| penny   | 10.90.3.2  | penny.k53.com     |
+| obladi  | 10.90.2.4  | obladi.k53.com    |
+| desmond | 10.90.2.5  | desmond.k53.com   |
+| oblada  | 10.90.2.6  | oblada.k53.com    |
+| molly   | 10.90.2.7  | molly.k53.com     |
+| prab    | 10.90.2.2  | prab.k53.com (sudah ada, Soal 4)  |
+| tedd    | 10.90.2.3  | tedd.k53.com (sudah ada, Soal 4)  |
+
+> Rootkit memiliki lima IP (satu per subnet). Untuk record DNS dipakai `10.90.2.1`, yaitu sisi yang satu subnet dengan DNS server.
+
+#### Langkah 1 : Tambahkan A record di prab (ns1)
+
+Buka konsol prab. Tulis ulang zona dengan serial dinaikkan menjadi `2026092902` supaya tedd ikut tersinkron:
+```bash
+cat > /etc/bind/k53/k53.com << 'EOF'
+$TTL 604800
+@   IN  SOA prab.k53.com. root.k53.com. (
+        2026092902 ; Serial
+        604800     ; Refresh
+        86400      ; Retry
+        2419200    ; Expire
+        604800 )   ; Negative Cache TTL
+
+@       IN  NS  prab.k53.com.
+@       IN  NS  tedd.k53.com.
+
+; Soal 4
+prab    IN  A   10.90.2.2
+tedd    IN  A   10.90.2.3
+@       IN  A   10.90.3.2
+
+; Soal 5
+rootkit IN  A   10.90.2.1
+alpha   IN  A   10.90.1.2
+beta    IN  A   10.90.1.3
+gamma   IN  A   10.90.1.4
+delta   IN  A   10.90.5.2
+epsilon IN  A   10.90.5.3
+abbey   IN  A   10.90.4.2
+penny   IN  A   10.90.3.2
+obladi  IN  A   10.90.2.4
+desmond IN  A   10.90.2.5
+oblada  IN  A   10.90.2.6
+molly   IN  A   10.90.2.7
+EOF
+```
+Cek sintaks zona, lalu reload:
+```bash
+named-checkzone k53.com /etc/bind/k53/k53.com
+rndc reload
+```
+Kalau `rndc` error, jalankan ulang named:
+```bash
+pkill named
+sleep 1
+named
+```
+
+#### Langkah 2 : Pastikan tedd menerima zona terbaru
+
+Di tedd, tunggu beberapa detik lalu cek serial:
+```bash
+dig @10.90.2.2 k53.com SOA +short
+dig @10.90.2.3 k53.com SOA +short
+```
+Serial di keduanya harus sama (`2026092902`). Kalau tedd belum ikut, paksa transfer:
+```bash
+rndc retransfer k53.com
+```
+
+#### Langkah 3 : Set hostname di setiap node
+
+Jalankan di masing-masing node sesuai namanya. Script menulis `/etc/hostname` dan `/etc/hosts` agar hostname dikenali secara system-wide.
+
+rootkit:
+```bash
+cat > /root/hostname.sh << 'EOF'
+hostname rootkit
+echo rootkit > /etc/hostname
+cat > /etc/hosts << EOT
+127.0.0.1 localhost
+::1 localhost
+10.90.2.1 rootkit.k53.com rootkit
+EOT
+EOF
+
+bash /root/hostname.sh
+```
+alpha:
+```bash
+cat > /root/hostname.sh << 'EOF'
+hostname alpha
+echo alpha > /etc/hostname
+cat > /etc/hosts << EOT
+127.0.0.1 localhost
+::1 localhost
+10.90.1.2 alpha.k53.com alpha
+EOT
+EOF
+
+bash /root/hostname.sh
+```
+beta:
+```bash
+cat > /root/hostname.sh << 'EOF'
+hostname beta
+echo beta > /etc/hostname
+cat > /etc/hosts << EOT
+127.0.0.1 localhost
+::1 localhost
+10.90.1.3 beta.k53.com beta
+EOT
+EOF
+
+bash /root/hostname.sh
+```
+gamma:
+```bash
+cat > /root/hostname.sh << 'EOF'
+hostname gamma
+echo gamma > /etc/hostname
+cat > /etc/hosts << EOT
+127.0.0.1 localhost
+::1 localhost
+10.90.1.4 gamma.k53.com gamma
+EOT
+EOF
+
+bash /root/hostname.sh
+```
+delta:
+```bash
+cat > /root/hostname.sh << 'EOF'
+hostname delta
+echo delta > /etc/hostname
+cat > /etc/hosts << EOT
+127.0.0.1 localhost
+::1 localhost
+10.90.5.2 delta.k53.com delta
+EOT
+EOF
+
+bash /root/hostname.sh
+```
+epsilon:
+```bash
+cat > /root/hostname.sh << 'EOF'
+hostname epsilon
+echo epsilon > /etc/hostname
+cat > /etc/hosts << EOT
+127.0.0.1 localhost
+::1 localhost
+10.90.5.3 epsilon.k53.com epsilon
+EOT
+EOF
+
+bash /root/hostname.sh
+```
+prab:
+```bash
+cat > /root/hostname.sh << 'EOF'
+hostname prab
+echo prab > /etc/hostname
+cat > /etc/hosts << EOT
+127.0.0.1 localhost
+::1 localhost
+10.90.2.2 prab.k53.com prab
+EOT
+EOF
+
+bash /root/hostname.sh
+```
+tedd:
+```bash
+cat > /root/hostname.sh << 'EOF'
+hostname tedd
+echo tedd > /etc/hostname
+cat > /etc/hosts << EOT
+127.0.0.1 localhost
+::1 localhost
+10.90.2.3 tedd.k53.com tedd
+EOT
+EOF
+
+bash /root/hostname.sh
+```
+abbey:
+```bash
+cat > /root/hostname.sh << 'EOF'
+hostname abbey
+echo abbey > /etc/hostname
+cat > /etc/hosts << EOT
+127.0.0.1 localhost
+::1 localhost
+10.90.4.2 abbey.k53.com abbey
+EOT
+EOF
+
+bash /root/hostname.sh
+```
+penny:
+```bash
+cat > /root/hostname.sh << 'EOF'
+hostname penny
+echo penny > /etc/hostname
+cat > /etc/hosts << EOT
+127.0.0.1 localhost
+::1 localhost
+10.90.3.2 penny.k53.com penny
+EOT
+EOF
+
+bash /root/hostname.sh
+```
+obladi:
+```bash
+cat > /root/hostname.sh << 'EOF'
+hostname obladi
+echo obladi > /etc/hostname
+cat > /etc/hosts << EOT
+127.0.0.1 localhost
+::1 localhost
+10.90.2.4 obladi.k53.com obladi
+EOT
+EOF
+
+bash /root/hostname.sh
+```
+desmond:
+```bash
+cat > /root/hostname.sh << 'EOF'
+hostname desmond
+echo desmond > /etc/hostname
+cat > /etc/hosts << EOT
+127.0.0.1 localhost
+::1 localhost
+10.90.2.5 desmond.k53.com desmond
+EOT
+EOF
+
+bash /root/hostname.sh
+```
+oblada:
+```bash
+cat > /root/hostname.sh << 'EOF'
+hostname oblada
+echo oblada > /etc/hostname
+cat > /etc/hosts << EOT
+127.0.0.1 localhost
+::1 localhost
+10.90.2.6 oblada.k53.com oblada
+EOT
+EOF
+
+bash /root/hostname.sh
+```
+molly:
+```bash
+cat > /root/hostname.sh << 'EOF'
+hostname molly
+echo molly > /etc/hostname
+cat > /etc/hosts << EOT
+127.0.0.1 localhost
+::1 localhost
+10.90.2.7 molly.k53.com molly
+EOT
+EOF
+
+bash /root/hostname.sh
+```
+
+#### Langkah 4 : Verifikasi hostname (di setiap node)
+
+Contoh di alpha:
+```bash
+hostname                # alpha
+hostname -f             # alpha.k53.com
+cat /etc/hostname       # alpha
+getent hosts alpha      # 10.90.1.2  alpha.k53.com alpha
+```
+Kalau prompt masih menampilkan nama lama, buka shell baru dengan mengetik `bash`.
+
+#### Langkah 5 : Verifikasi DNS dari dua klien berbeda
+
+Jalankan di alpha, lalu ulangi di delta:
+```bash
+for h in rootkit alpha beta gamma delta epsilon abbey penny obladi desmond oblada molly; do
+  echo -n "$h.k53.com -> "
+  dig +short $h.k53.com
+done
+```
+Setiap hostname harus mengembalikan IP
