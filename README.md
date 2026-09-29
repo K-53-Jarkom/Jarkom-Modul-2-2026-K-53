@@ -144,3 +144,5 @@ Kita memastikan setiap host non-router menambahkan resolver sementara 192.168.12
 echo "nameserver 192.168.122.1" > /etc/resolv.conf
 ping -c 3 google.com
 ```
+![](assets/alpha-ping-internet.png)
+
