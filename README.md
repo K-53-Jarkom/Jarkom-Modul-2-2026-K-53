@@ -606,4 +606,89 @@ for h in rootkit alpha beta gamma delta epsilon abbey penny obladi desmond oblad
   dig +short $h.k53.com
 done
 ```
-Setiap hostname harus mengembalikan IP
+Setiap hostname harus mengembalikan IP sesuai tabel di atas.
+![](assets/verif-dns-alpha.png)
+![](assets/verif-dns-delta.png)
+
+Pastikan tedd juga menjawab secara authoritative (harus ada flag `aa`):
+```bash
+dig @10.90.2.3 alpha.k53.com | grep flags
+```
+![](assets/tedd-flag.png)
+> Kalau node di-restart, jalankan ulang script IP-nya (Soal 1) lalu `bash /root/hostname.sh`.
+
+### Soal 6 : Verifikasi Zone Transfer dan Serial SOA
+
+Zone transfer dari prab (master) ke tedd (slave) sudah dikonfigurasi di Soal 4 lewat `allow-transfer` dan `notify yes` di prab, serta `masters { 10.90.2.2; }` di tedd. Di soal ini kita membuktikan bahwa tedd sudah menerima salinan zona terbaru dan serial SOA di keduanya sama.
+
+#### Langkah 1 : Bandingkan serial SOA di prab dan tedd
+
+Jalankan dari node mana saja (misalnya prab):
+```bash
+dig @10.90.2.2 k53.com SOA +short
+dig @10.90.2.3 k53.com SOA +short
+```
+Angka serial (field ketiga) di kedua output harus sama, yaitu `2026092902`.
+
+Bisa juga dilihat langsung di masing-masing server:
+```bash
+# di prab
+rndc zonestatus k53.com | grep -E "type|serial"
+
+# di tedd
+rndc zonestatus k53.com | grep -E "type|serial"
+```
+Prab harus `type: primary` dan tedd `type: secondary`, dengan serial yang sama.
+
+#### Langkah 2 : Pastikan tedd punya file salinan zona
+
+Di tedd:
+```bash
+ls -l /var/cache/bind/k53.com
+```
+File harus ada dengan ukuran lebih dari 0. Di BIND versi baru, file slave disimpan dalam format raw sehingga tidak terbaca dengan `cat`. Untuk melihat isinya:
+```bash
+named-compilezone -f raw -F text -o - k53.com /var/cache/bind/k53.com
+```
+
+#### Langkah 3 : Uji zone transfer (AXFR) dari tedd ke prab
+
+Di tedd:
+```bash
+dig @10.90.2.2 k53.com AXFR
+```
+Outputnya harus menampilkan seluruh record zona, diawali dan diakhiri record SOA, tanpa `Transfer failed`. Ini juga membuktikan `allow-transfer` di prab mengizinkan IP tedd (10.90.2.3).
+
+Kalau dicoba dari node lain (misalnya alpha), transfer harus ditolak:
+```bash
+dig @10.90.2.2 k53.com AXFR
+```
+Hasilnya `Transfer failed.`, karena hanya tedd yang diizinkan.
+
+#### Langkah 4 : Buktikan perubahan otomatis tersinkron (notify)
+
+Di prab, naikkan serial menjadi `2026092903` dan reload:
+```bash
+sed -i 's/2026092902 ; Serial/2026092903 ; Serial/' /etc/bind/k53/k53.com
+named-checkzone k53.com /etc/bind/k53/k53.com
+rndc reload
+```
+Tunggu beberapa detik, lalu cek kembali:
+```bash
+dig @10.90.2.2 k53.com SOA +short
+dig @10.90.2.3 k53.com SOA +short
+```
+Serial di prab dan tedd harus sama-sama `2026092903`. Kalau tedd belum ikut, paksa transfer di tedd:
+```bash
+rndc retransfer k53.com
+```
+
+> Serial terbaru sekarang `2026092903`. Setiap mengubah zona di soal berikutnya, naikkan serial lagi (misalnya `2026092904`) supaya tedd ikut tersinkron.
+
+#### Verifikasi akhir
+
+Screenshot untuk laporan:
+1. Output dua perintah `dig ... SOA +short` di Langkah 1 dengan serial sama
+2. `rndc zonestatus k53.com` di prab dan tedd
+3. `ls -l /var/cache/bind/k53.com` di tedd
+4. `dig @10.90.2.2 k53.com AXFR` dari tedd
