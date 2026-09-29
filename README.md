@@ -657,12 +657,14 @@ Di tedd:
 ```bash
 dig @10.90.2.2 k53.com AXFR
 ```
+![](assets/axfr-tedd.png)
 Outputnya harus menampilkan seluruh record zona, diawali dan diakhiri record SOA, tanpa `Transfer failed`. Ini juga membuktikan `allow-transfer` di prab mengizinkan IP tedd (10.90.2.3).
 
 Kalau dicoba dari node lain (misalnya alpha), transfer harus ditolak:
 ```bash
 dig @10.90.2.2 k53.com AXFR
 ```
+![](assets/axfr-alpha.png)
 Hasilnya `Transfer failed.`, karena hanya tedd yang diizinkan.
 
 #### Langkah 4 : Buktikan perubahan otomatis tersinkron (notify)
