@@ -2,7 +2,9 @@
 Data Communication and Computer Networks Practicum
 
 Soal 1 :
+
 ![](assets/Topologi.png)
+
 1. Router (rootkit)
 Buka konsol rootkit, lalu ketik perintah berikut:
 ```bash
