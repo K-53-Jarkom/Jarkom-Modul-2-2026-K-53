@@ -299,4 +299,5 @@ Pastikan akses internet lewat forwarders tetap berfungsi:
 ```bash
 ping -c 2 google.com
 ```
-![](assets/ping-google.png)
+![](assets/ping-google-1.png)
+![](assets/ping-google-2.png)
