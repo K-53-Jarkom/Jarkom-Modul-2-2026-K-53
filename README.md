@@ -154,8 +154,9 @@ ping -c 3 google.com
 
 #### Langkah 1 : Instalasi BIND9 di Prab dan Tedd
 
-Kita buka konsol node prab dan stedd, lalu melakukan instalasi paket bind9:
+Kita buka konsol node prab dan tedd, lalu melakukan instalasi paket bind9:
 ```bash
+echo "nameserver 8.8.8.8" > /etc/resolv.conf
 apt-get update
 apt-get install bind9 -y
 ```
@@ -167,7 +168,7 @@ Mengatur bagian forwarders mengarah ke 192.168.122.1:
 options {
     directory "/var/cache/bind";
     forwarders {
-        192.168.122.1;
+        8.8.8.8;
     };
     dnssec-validation auto;
     listen-on { any; };
@@ -184,7 +185,12 @@ zone "k53.com" {
 };
 ```
 Membuat direktori dan file zona (/etc/bind/k53/k53.com):\
-Membuat folder /etc/bind/k53, lalu buat file zona dengan isi rekaman DNS (SOA, NS, A record untuk prab, stedd, dan apex k53.com yang mengarah ke IP penny yaitu 10.90.3.2):
+Membuat folder /etc/bind/k53, 
+```bash
+mkdir -p /etc/bind/k53
+nano /etc/bind/k53/k53.com
+```
+lalu buat file zona dengan isi rekaman DNS (SOA, NS, A record untuk prab, stedd, dan apex k53.com yang mengarah ke IP penny yaitu 10.90.3.2):
 ```bash
 $TTL 604800
 @   IN  SOA prab.k53.com. root.k53.com. (
@@ -195,17 +201,21 @@ $TTL 604800
         604800 )   ; Negative Cache TTL
 
 @   IN  NS  prab.k53.com.
-@   IN  NS  stedd.k53.com.
+@   IN  NS  tedd.k53.com.
 
 prab    IN  A   10.90.2.2
-stedd   IN  A   10.90.2.3
+tedd   IN  A   10.90.2.3
 @       IN  A   10.90.3.2
 ```
 Restart layanan BIND9 di prab:
 ```bash
-service bind9 restart
+named
 ```
-#### Langkah 3 : Konfigurasi Slave DNS pada stedd (ns2)
+Kita bisa cek apakah sudah jalan:
+```bash
+ps aux | grep named
+```
+#### Langkah 3 : Konfigurasi Slave DNS pada tedd (ns2)
 
 Edit file konfigurasi zona di /etc/bind/named.conf.local:\
 Daftarkan zona k53.com sebagai slave yang mengambil data dari master prab (10.90.2.2):
@@ -216,11 +226,11 @@ zone "k53.com" {
     masters { 10.90.2.2; };
 };
 ```
-Restart layanan BIND9 di stedd:
+Restart layanan BIND9 di tedd:
 ```bash
-service bind9 restart
+named
 ```
-(Catatan: Setelah di-restart, kita cek /var/cache/bind/k53.com di node stedd untuk memastikan file zona berhasil di-transfer dari prab)
+(Catatan: Setelah di-restart, kita cek /var/cache/bind/k53.com di node tedd untuk memastikan file zona berhasil di-transfer dari prab)
 
 #### Langkah 4 : Pembaruan Resolver pada Seluruh Node Non-Router
 
@@ -235,4 +245,6 @@ Uji dari node klien (alpha) apakah query domain apex maupun hostname dijawab den
 ```bash
 nslookup k53.com
 nslookup prab.k53.com
+nslookup tedd.k53.com
 ```
+![](assets/coba.png)
