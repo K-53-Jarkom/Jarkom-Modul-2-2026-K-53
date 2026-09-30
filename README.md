@@ -904,20 +904,9 @@ echo "== static =="
 dig +short static.k53.com
 ```
 Hasil yang benar (urutan dua IP boleh berbeda):
-```
-== vault ==
-10.90.2.4
-10.90.2.5
-== core ==
-10.90.2.6
-10.90.2.7
-== www ==
-penny.k53.com.
-10.90.3.2
-== static ==
-abbey.k53.com.
-10.90.4.2
-```
+
+![](assets/alpha-vault.png)
+![](assets/delta-vault.png)
 
 Pastikan tedd juga menjawab dengan benar dan authoritative:
 ```bash
@@ -925,6 +914,7 @@ dig @10.90.2.3 www.k53.com | grep -E "flags|CNAME"
 dig @10.90.2.3 vault.k53.com +short
 ```
 Flag harus memuat `aa`, dan `www` harus menampilkan CNAME ke `penny.k53.com.`.
+![](assets/tedd-flags.png)
 
 ### Soal 8 : Reverse Zone dan PTR Record
 
