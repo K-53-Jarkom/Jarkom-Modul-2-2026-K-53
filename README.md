@@ -925,3 +925,322 @@ dig @10.90.2.3 www.k53.com | grep -E "flags|CNAME"
 dig @10.90.2.3 vault.k53.com +short
 ```
 Flag harus memuat `aa`, dan `www` harus menampilkan CNAME ke `penny.k53.com.`.
+
+### Soal 8 : Reverse Zone dan PTR Record
+
+Reverse zone dideklarasikan di prab (master) dan ditarik oleh tedd (slave). Hostname yang dibuatkan PTR berada di tiga subnet berbeda (abbey di 10.90.4.x, penny di 10.90.3.x, area vault dan area core di 10.90.2.x), jadi dipakai satu reverse zone `90.10.in-addr.arpa` yang mencakup ketiganya.
+
+| IP         | PTR              |
+|------------|------------------|
+| 10.90.4.2  | abbey.k53.com.   |
+| 10.90.3.2  | penny.k53.com.   |
+| 10.90.2.4  | vault.k53.com.   |
+| 10.90.2.5  | vault.k53.com.   |
+| 10.90.2.6  | core.k53.com.    |
+| 10.90.2.7  | core.k53.com.    |
+
+Nama di dalam zona ini ditulis terbalik dari dua oktet terakhir. Contoh: `10.90.3.2` menjadi `2.3`.
+
+#### Langkah 1 : Deklarasi reverse zone di prab (ns1)
+
+Daftarkan zona di `/etc/bind/named.conf.local`. Gunakan `>>` (menambah), jangan `>` karena akan menimpa zona `k53.com`:
+```bash
+cat >> /etc/bind/named.conf.local << 'EOF'
+zone "90.10.in-addr.arpa" {
+    type master;
+    file "/etc/bind/k53/90.10.in-addr.arpa";
+    allow-transfer { 10.90.2.3; };
+    notify yes;
+};
+EOF
+```
+
+#### Langkah 2 : Buat file reverse zone di prab
+
+```bash
+cat > /etc/bind/k53/90.10.in-addr.arpa << 'EOF'
+$TTL 604800
+@   IN  SOA prab.k53.com. root.k53.com. (
+        2026092901 ; Serial
+        604800     ; Refresh
+        86400      ; Retry
+        2419200    ; Expire
+        604800 )   ; Negative Cache TTL
+
+@       IN  NS  prab.k53.com.
+@       IN  NS  tedd.k53.com.
+
+2.4     IN  PTR abbey.k53.com.
+2.3     IN  PTR penny.k53.com.
+4.2     IN  PTR vault.k53.com.
+5.2     IN  PTR vault.k53.com.
+6.2     IN  PTR core.k53.com.
+7.2     IN  PTR core.k53.com.
+EOF
+```
+
+#### Langkah 3 : Cek dan jalankan ulang named di prab
+
+```bash
+cat /etc/bind/named.conf.local
+named-checkconf
+named-checkzone 90.10.in-addr.arpa /etc/bind/k53/90.10.in-addr.arpa
+pkill named
+sleep 1
+named
+dig @127.0.0.1 -x 10.90.3.2 +short
+```
+`named-checkzone` harus menampilkan `OK`, dan `dig -x` harus mengembalikan `penny.k53.com.`.
+
+#### Langkah 4 : Tarik reverse zone sebagai slave di tedd (ns2)
+
+Daftarkan zona slave di `/etc/bind/named.conf.local` (tetap dengan `>>`):
+```bash
+cat >> /etc/bind/named.conf.local << 'EOF'
+zone "90.10.in-addr.arpa" {
+    type slave;
+    file "/var/cache/bind/90.10.in-addr.arpa";
+    masters { 10.90.2.2; };
+};
+EOF
+```
+Cek config, jalankan ulang named, lalu pastikan salinan zona sudah ditarik:
+```bash
+cat /etc/bind/named.conf.local
+named-checkconf
+pkill named
+sleep 1
+named
+sleep 3
+ls -l /var/cache/bind/
+```
+File `90.10.in-addr.arpa` harus muncul di samping `k53.com`. Record PTR tidak perlu diisi manual di tedd karena datanya ditarik otomatis dari prab lewat zone transfer.
+
+#### Langkah 5 : Verifikasi query reverse
+
+Jalankan dari salah satu klien (misalnya alpha), ke prab lalu ke tedd:
+```bash
+for ip in 10.90.4.2 10.90.3.2 10.90.2.4 10.90.2.5 10.90.2.6 10.90.2.7; do
+  echo -n "$ip -> "
+  dig @10.90.2.2 -x $ip +short | tr '\n' ' '
+  echo
+done
+```
+```bash
+for ip in 10.90.4.2 10.90.3.2 10.90.2.4 10.90.2.5 10.90.2.6 10.90.2.7; do
+  echo -n "$ip -> "
+  dig @10.90.2.3 -x $ip +short | tr '\n' ' '
+  echo
+done
+```
+Hasil yang benar di keduanya: `abbey.k53.com.`, `penny.k53.com.`, `vault.k53.com.` (dua kali), dan `core.k53.com.` (dua kali).
+
+Pastikan jawabannya authoritative dan serial SOA reverse zone sama di kedua server:
+```bash
+dig @10.90.2.2 -x 10.90.4.2 | grep flags
+dig @10.90.2.3 -x 10.90.4.2 | grep flags
+dig @10.90.2.2 90.10.in-addr.arpa SOA +short
+dig @10.90.2.3 90.10.in-addr.arpa SOA +short
+```
+Flag harus memuat `aa`, dan serial di kedua server harus sama (`2026092901`).
+
+> Serial reverse zone terpisah dari serial zona `k53.com`. Kalau PTR diubah nanti, naikkan serialnya (misalnya `2026092902`), jalankan ulang named di prab, lalu di tedd jalankan `rm -f /var/cache/bind/90.10.in-addr.arpa` sebelum menjalankan ulang named.
+
+### Soal 9 : Web Statis dengan Apache di Area Vault
+
+Layanan web statis dijalankan di node area vault (obladi dan desmond) memakai Apache. Folder `/arsip/` dibuat dengan fitur autoindex (directory listing) aktif, sehingga seluruh daftar file di dalamnya bisa ditelusuri dari browser. Pengujian dilakukan lewat hostname, bukan IP address.
+
+Langkah 1, 3, dan 4 dijalankan di **obladi dan desmond** dengan perintah yang sama. Langkah 2 berbeda di nilai `N`.
+
+#### Langkah 1 : Instal Apache
+
+Jalankan di obladi, lalu ulangi di desmond:
+```bash
+ping -c 2 google.com
+apt-get update
+apt-get install apache2 curl -y
+```
+
+#### Langkah 2 : Buat folder /arsip/ dan isinya
+
+Folder dibuat di dalam document root Apache supaya URL-nya `/arsip/`. Isi file sengaja memuat nama node, supaya nanti di Soal 11 bisa dibuktikan bahwa Penny membagi trafik ke obladi dan desmond.
+
+obladi:
+```bash
+N=obladi
+mkdir -p /var/www/html/arsip
+echo "dokumen rahasia 1 dari $N" > /var/www/html/arsip/dokumen1.txt
+echo "dokumen rahasia 2 dari $N" > /var/www/html/arsip/dokumen2.txt
+echo "catatan dari $N" > /var/www/html/arsip/catatan.txt
+echo "<h1>Web statis $N</h1>" > /var/www/html/index.html
+```
+desmond:
+```bash
+N=desmond
+mkdir -p /var/www/html/arsip
+echo "dokumen rahasia 1 dari $N" > /var/www/html/arsip/dokumen1.txt
+echo "dokumen rahasia 2 dari $N" > /var/www/html/arsip/dokumen2.txt
+echo "catatan dari $N" > /var/www/html/arsip/catatan.txt
+echo "<h1>Web statis $N</h1>" > /var/www/html/index.html
+```
+
+#### Langkah 3 : Aktifkan autoindex untuk /arsip/
+
+Pastikan `hostname` di node sudah benar (`obladi` atau `desmond`) sebelum menjalankan ini, karena dipakai untuk `ServerName`:
+```bash
+hostname
+```
+Lalu jalankan di obladi dan desmond:
+```bash
+cat > /etc/apache2/conf-available/arsip.conf << 'EOF'
+<Directory /var/www/html/arsip>
+    Options +Indexes
+    AllowOverride None
+    Require all granted
+</Directory>
+EOF
+a2enconf arsip
+echo "ServerName $(hostname).k53.com" > /etc/apache2/conf-available/servername.conf
+a2enconf servername
+```
+Modul `autoindex` sudah aktif secara default di Debian. Kalau ragu, cek dengan `a2enmod autoindex`.
+
+#### Langkah 4 : Jalankan Apache
+
+```bash
+apache2ctl configtest
+service apache2 restart
+ps aux | grep apache2
+```
+`configtest` harus menampilkan `Syntax OK`. Kalau `service` tidak bekerja di container, pakai `apache2ctl start` (atau `apache2ctl -k restart` kalau Apache sudah jalan).
+
+#### Langkah 5 : Tes lokal di node
+
+```bash
+curl -s http://localhost/arsip/ | grep -E "Index of|txt"
+```
+Harus muncul `Index of /arsip` dan ketiga file `.txt`.
+
+#### Langkah 6 : Verifikasi dari klien lewat hostname
+
+Jalankan di alpha atau delta (instal `curl` dulu dengan `apt-get install curl -y` kalau belum ada):
+```bash
+curl http://obladi.k53.com/arsip/
+curl http://desmond.k53.com/arsip/
+curl http://vault.k53.com/arsip/
+```
+Ketiganya harus menampilkan halaman `Index of /arsip` dengan daftar file. Untuk `vault.k53.com`, DNS mengembalikan dua IP, sehingga jawabannya bisa datang dari obladi atau desmond. Isi salah satu file menunjukkan node yang menjawab:
+```bash
+curl http://vault.k53.com/arsip/dokumen1.txt
+```
+Lewat browser, buka `http://vault.k53.com/arsip/` dan pastikan daftar file bisa ditelusuri.
+
+> Pengujian wajib memakai hostname (`obladi.k53.com`, `desmond.k53.com`, atau `vault.k53.com`), bukan IP address.
+
+### Soal 10 : Web Dinamis dengan Nginx dan PHP-FPM di Area Core
+
+Layanan web dinamis dijalankan di node area core (oblada dan molly) memakai Nginx dan PHP-FPM. Aplikasi sederhana terdiri dari halaman beranda dan halaman profil. Aturan rewrite di Nginx membuat akses `/profil` bekerja dengan URL bersih (tanpa akhiran `.php`). Pengujian dilakukan lewat hostname, bukan IP address.
+
+Semua langkah di bawah dijalankan di **oblada dan molly** dengan perintah yang sama. Halaman PHP menampilkan `gethostname()`, jadi isi file identik di kedua node dan otomatis menunjukkan node mana yang menjawab.
+
+#### Langkah 1 : Instal Nginx dan PHP-FPM
+
+Jalankan di oblada, lalu ulangi di molly:
+```bash
+ping -c 2 google.com
+apt-get update
+apt-get install nginx php-fpm curl -y
+```
+Di Debian 13, paket `php-fpm` membawa PHP 8.4 (sesuai saran soal). Cek versi dan nama socket-nya:
+```bash
+php -v | head -1
+ls /run/php/ /etc/php/
+```
+Folder `/run/php/` masih kosong sebelum PHP-FPM dijalankan, dan itu normal. Nama socket yang dipakai di Langkah 3 adalah `php8.4-fpm.sock`. Kalau versi PHP berbeda, ganti angkanya di Langkah 3.
+
+#### Langkah 2 : Buat aplikasi sederhana (beranda dan profil)
+
+Beranda:
+```bash
+mkdir -p /var/www/core
+cat > /var/www/core/index.php << 'EOF'
+<h1>Beranda Area Core</h1>
+<p>Dilayani oleh node: <?php echo gethostname(); ?></p>
+<p>IP pengunjung: <?php echo $_SERVER['REMOTE_ADDR']; ?></p>
+<p><a href="/profil">Lihat profil</a></p>
+EOF
+```
+Profil:
+```bash
+cat > /var/www/core/profil.php << 'EOF'
+<h1>Halaman Profil</h1>
+<p>Kelompok: K-53</p>
+<p>Dilayani oleh node: <?php echo gethostname(); ?></p>
+<p><a href="/">Kembali ke beranda</a></p>
+EOF
+chown -R www-data:www-data /var/www/core
+```
+
+#### Langkah 3 : Konfigurasi Nginx dengan aturan rewrite
+
+Aturan `rewrite ^/profil$ /profil.php last;` membuat akses `/profil` dilayani oleh `profil.php`:
+```bash
+cat > /etc/nginx/sites-available/core << 'EOF'
+server {
+    listen 80 default_server;
+    server_name _;
+    root /var/www/core;
+    index index.php index.html;
+
+    rewrite ^/profil$ /profil.php last;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/run/php/php8.4-fpm.sock;
+    }
+}
+EOF
+```
+Aktifkan situs ini dan matikan situs bawaan:
+```bash
+ln -sf /etc/nginx/sites-available/core /etc/nginx/sites-enabled/core
+rm -f /etc/nginx/sites-enabled/default
+```
+`server_name _` dengan `default_server` membuat Nginx menerima request dengan hostname apa pun (`oblada.k53.com`, `molly.k53.com`, atau `core.k53.com`). Ini juga dibutuhkan untuk reverse proxy Abbey di Soal 11.
+
+#### Langkah 4 : Jalankan PHP-FPM dan Nginx
+
+```bash
+service php8.4-fpm start
+ls /run/php/
+nginx -t
+service nginx restart
+ps aux | grep -E "nginx|php-fpm"
+```
+`ls /run/php/` harus menampilkan `php8.4-fpm.sock`, dan `nginx -t` harus menampilkan `syntax is ok` dan `test is successful`. Kalau `service` tidak bekerja di container, pakai `php-fpm8.4` dan `nginx` langsung (jalankan `pkill nginx; nginx` kalau Nginx sudah hidup).
+
+#### Langkah 5 : Tes lokal di node
+
+```bash
+curl -s http://localhost/ | head -5
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost/profil
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost/profil.php
+```
+Beranda harus tampil, dan `/profil` harus mengembalikan `200`.
+
+#### Langkah 6 : Verifikasi dari klien lewat hostname
+
+Jalankan di alpha atau delta (instal `curl` dengan `apt-get install curl -y` kalau belum ada):
+```bash
+curl http://oblada.k53.com/
+curl http://molly.k53.com/profil
+curl http://core.k53.com/
+curl http://core.k53.com/profil
+```
+Semua harus tampil, dan `/profil` bekerja tanpa akhiran `.php`. Untuk `core.k53.com`, DNS mengembalikan dua IP, sehingga jawabannya bisa datang dari oblada atau molly (lihat baris "Dilayani oleh node"). Lewat browser, buka `http://core.k53.com/` lalu klik link profil.
+
+> Pengujian wajib memakai hostname (`oblada.k53.com`, `molly.k53.com`, atau `core.k53.com`), bukan IP address.
