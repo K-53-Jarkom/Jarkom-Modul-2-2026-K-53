@@ -1117,6 +1117,8 @@ curl -s http://localhost/arsip/ | grep -E "Index of|txt"
 ```
 Harus muncul `Index of /arsip` dan ketiga file `.txt`.
 
+![](assets/soal91.png)
+
 #### Langkah 6 : Verifikasi dari klien lewat hostname
 
 Jalankan di alpha atau delta (instal `curl` dulu dengan `apt-get install curl -y` kalau belum ada):
@@ -1125,10 +1127,13 @@ curl http://obladi.k53.com/arsip/
 curl http://desmond.k53.com/arsip/
 curl http://vault.k53.com/arsip/
 ```
+![](assets/soal92.png)
+![](assets/soal93.png)
 Ketiganya harus menampilkan halaman `Index of /arsip` dengan daftar file. Untuk `vault.k53.com`, DNS mengembalikan dua IP, sehingga jawabannya bisa datang dari obladi atau desmond. Isi salah satu file menunjukkan node yang menjawab:
 ```bash
 curl http://vault.k53.com/arsip/dokumen1.txt
 ```
+![](assets/soal94.png)
 Lewat browser, buka `http://vault.k53.com/arsip/` dan pastikan daftar file bisa ditelusuri.
 
 > Pengujian wajib memakai hostname (`obladi.k53.com`, `desmond.k53.com`, atau `vault.k53.com`), bukan IP address.
@@ -1217,6 +1222,7 @@ nginx -t
 service nginx restart
 ps aux | grep -E "nginx|php-fpm"
 ```
+![](assets/soal101.png)
 `ls /run/php/` harus menampilkan `php8.4-fpm.sock`, dan `nginx -t` harus menampilkan `syntax is ok` dan `test is successful`. Kalau `service` tidak bekerja di container, pakai `php-fpm8.4` dan `nginx` langsung (jalankan `pkill nginx; nginx` kalau Nginx sudah hidup).
 
 #### Langkah 5 : Tes lokal di node
@@ -1226,6 +1232,7 @@ curl -s http://localhost/ | head -5
 curl -s -o /dev/null -w "%{http_code}\n" http://localhost/profil
 curl -s -o /dev/null -w "%{http_code}\n" http://localhost/profil.php
 ```
+![](assets/soal102.png)
 Beranda harus tampil, dan `/profil` harus mengembalikan `200`.
 
 #### Langkah 6 : Verifikasi dari klien lewat hostname
@@ -1237,6 +1244,7 @@ curl http://molly.k53.com/profil
 curl http://core.k53.com/
 curl http://core.k53.com/profil
 ```
+![](assets/soal103.png)
 Semua harus tampil, dan `/profil` bekerja tanpa akhiran `.php`. Untuk `core.k53.com`, DNS mengembalikan dua IP, sehingga jawabannya bisa datang dari oblada atau molly (lihat baris "Dilayani oleh node"). Lewat browser, buka `http://core.k53.com/` lalu klik link profil.
 
 > Pengujian wajib memakai hostname (`oblada.k53.com`, `molly.k53.com`, atau `core.k53.com`), bukan IP address.
