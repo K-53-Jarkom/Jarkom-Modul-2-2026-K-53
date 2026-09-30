@@ -914,6 +914,7 @@ dig @10.90.2.3 www.k53.com | grep -E "flags|CNAME"
 dig @10.90.2.3 vault.k53.com +short
 ```
 Flag harus memuat `aa`, dan `www` harus menampilkan CNAME ke `penny.k53.com.`.
+
 ![](assets/tedd-flags.png)
 
 ### Soal 8 : Reverse Zone dan PTR Record
@@ -1025,6 +1026,8 @@ done
 ```
 Hasil yang benar di keduanya: `abbey.k53.com.`, `penny.k53.com.`, `vault.k53.com.` (dua kali), dan `core.k53.com.` (dua kali).
 
+![](assets/soal81.png)
+
 Pastikan jawabannya authoritative dan serial SOA reverse zone sama di kedua server:
 ```bash
 dig @10.90.2.2 -x 10.90.4.2 | grep flags
@@ -1033,6 +1036,9 @@ dig @10.90.2.2 90.10.in-addr.arpa SOA +short
 dig @10.90.2.3 90.10.in-addr.arpa SOA +short
 ```
 Flag harus memuat `aa`, dan serial di kedua server harus sama (`2026092901`).
+
+![](assets/soal82.png)
+![](assets/soal83.png)
 
 > Serial reverse zone terpisah dari serial zona `k53.com`. Kalau PTR diubah nanti, naikkan serialnya (misalnya `2026092902`), jalankan ulang named di prab, lalu di tedd jalankan `rm -f /var/cache/bind/90.10.in-addr.arpa` sebelum menjalankan ulang named.
 
