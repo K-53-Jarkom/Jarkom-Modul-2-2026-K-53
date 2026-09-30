@@ -1,0 +1,539 @@
+## Pemulihan Cepat (bangun ulang seluruh topologi Soal 1-10)
+
+> Node Docker di GNS3 kehilangan isinya setelah dimatikan lalu dinyalakan lagi. Ikuti urutan di bawah dari atas ke bawah, dan paste **satu blok sekali**. Pastikan prompt konsol sesuai nama node sebelum paste.
+
+Urutan wajib: rootkit → prab → tedd → alpha, beta, gamma, delta, epsilon, abbey, penny → obladi, desmond → oblada, molly.
+
+### A. rootkit
+
+IP internal:
+```bash
+cat > /root/rootkit-ip.sh << 'EOF'
+for i in 1 2 3 4 5; do ip addr flush dev eth$i; done
+ip addr add 10.90.2.1/24 dev eth1
+ip addr add 10.90.4.1/24 dev eth2
+ip addr add 10.90.3.1/24 dev eth3
+ip addr add 10.90.1.1/24 dev eth4
+ip addr add 10.90.5.1/24 dev eth5
+for i in 1 2 3 4 5; do ip link set eth$i up; done
+sysctl -w net.ipv4.ip_forward=1
+EOF
+```
+NAT:
+```bash
+cat > /root/rootkit-nat.sh << 'EOF'
+ip addr flush dev eth0
+ip addr add 192.168.122.100/24 dev eth0
+ip link set eth0 up
+ip route replace default via 192.168.122.1
+iptables -t nat -F POSTROUTING
+iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+EOF
+```
+Jalankan, set hostname, dan cek:
+```bash
+bash /root/rootkit-ip.sh
+bash /root/rootkit-nat.sh
+hostname rootkit; echo rootkit > /etc/hostname
+echo -e "127.0.0.1 localhost\n10.90.2.1 rootkit.k53.com rootkit" > /etc/hosts
+ip -br addr
+ping -c 2 8.8.8.8
+```
+`eth1` sampai `eth5` harus punya subnet berbeda, dan ping ke internet harus berhasil.
+
+### B. prab (ns1, master)
+
+**B1. IP, resolver, instal BIND**
+```bash
+cat > /root/prab.sh << 'EOF'
+ip addr flush dev eth0
+ip addr add 10.90.2.2/24 dev eth0
+ip link set eth0 up
+ip route replace default via 10.90.2.1
+echo "nameserver 192.168.122.1" > /etc/resolv.conf
+EOF
+bash /root/prab.sh
+ping -c 2 8.8.8.8
+```
+```bash
+apt-get update
+apt-get install bind9 dnsutils -y
+mkdir -p /etc/bind/k53
+```
+
+**B2. Options**
+```bash
+cat > /etc/bind/named.conf.options << 'EOF'
+options {
+    directory "/var/cache/bind";
+    forwarders {
+        192.168.122.1;
+    };
+    dnssec-validation no;
+    listen-on { any; };
+    allow-query { any; };
+};
+EOF
+```
+
+**B3. Deklarasi dua zona (forward dan reverse)**
+```bash
+cat > /etc/bind/named.conf.local << 'EOF'
+zone "k53.com" {
+    type master;
+    file "/etc/bind/k53/k53.com";
+    allow-transfer { 10.90.2.3; };
+    notify yes;
+};
+
+zone "90.10.in-addr.arpa" {
+    type master;
+    file "/etc/bind/k53/90.10.in-addr.arpa";
+    allow-transfer { 10.90.2.3; };
+    notify yes;
+};
+EOF
+```
+
+**B4. File zona k53.com (tiga blok)**
+
+Blok 1:
+```bash
+cat > /etc/bind/k53/k53.com << 'EOF'
+$TTL 604800
+@   IN  SOA prab.k53.com. root.k53.com. (
+        2026092904 ; Serial
+        604800     ; Refresh
+        86400      ; Retry
+        2419200    ; Expire
+        604800 )   ; Negative Cache TTL
+
+@       IN  NS  prab.k53.com.
+@       IN  NS  tedd.k53.com.
+
+prab    IN  A   10.90.2.2
+tedd    IN  A   10.90.2.3
+@       IN  A   10.90.3.2
+EOF
+```
+Blok 2:
+```bash
+cat >> /etc/bind/k53/k53.com << 'EOF'
+rootkit IN  A   10.90.2.1
+alpha   IN  A   10.90.1.2
+beta    IN  A   10.90.1.3
+gamma   IN  A   10.90.1.4
+delta   IN  A   10.90.5.2
+epsilon IN  A   10.90.5.3
+abbey   IN  A   10.90.4.2
+penny   IN  A   10.90.3.2
+obladi  IN  A   10.90.2.4
+desmond IN  A   10.90.2.5
+oblada  IN  A   10.90.2.6
+molly   IN  A   10.90.2.7
+EOF
+```
+Blok 3:
+```bash
+cat >> /etc/bind/k53/k53.com << 'EOF'
+vault   IN  A   10.90.2.4
+vault   IN  A   10.90.2.5
+core    IN  A   10.90.2.6
+core    IN  A   10.90.2.7
+www     IN  CNAME   penny.k53.com.
+static  IN  CNAME   abbey.k53.com.
+EOF
+```
+
+**B5. File reverse zone**
+```bash
+cat > /etc/bind/k53/90.10.in-addr.arpa << 'EOF'
+$TTL 604800
+@   IN  SOA prab.k53.com. root.k53.com. (
+        2026092901 ; Serial
+        604800     ; Refresh
+        86400      ; Retry
+        2419200    ; Expire
+        604800 )   ; Negative Cache TTL
+
+@       IN  NS  prab.k53.com.
+@       IN  NS  tedd.k53.com.
+
+2.4     IN  PTR abbey.k53.com.
+2.3     IN  PTR penny.k53.com.
+4.2     IN  PTR vault.k53.com.
+5.2     IN  PTR vault.k53.com.
+6.2     IN  PTR core.k53.com.
+7.2     IN  PTR core.k53.com.
+EOF
+```
+
+**B6. Cek dan jalankan named**
+```bash
+named-checkconf
+named-checkzone k53.com /etc/bind/k53/k53.com
+named-checkzone 90.10.in-addr.arpa /etc/bind/k53/90.10.in-addr.arpa
+pkill named; sleep 1; named
+dig @127.0.0.1 +short vault.k53.com
+dig @127.0.0.1 -x 10.90.3.2 +short
+```
+Kedua `named-checkzone` harus `OK`. `vault` harus menampilkan `10.90.2.4` dan `10.90.2.5`, dan `dig -x` harus menampilkan `penny.k53.com.`.
+
+**B7. Hostname dan resolver akhir**
+```bash
+hostname prab; echo prab > /etc/hostname
+echo -e "127.0.0.1 localhost\n10.90.2.2 prab.k53.com prab" > /etc/hosts
+echo -e "nameserver 10.90.2.2\nnameserver 10.90.2.3\nnameserver 192.168.122.1" > /etc/resolv.conf
+```
+
+### C. tedd (ns2, slave)
+
+**C1. IP, resolver, instal BIND**
+```bash
+cat > /root/tedd.sh << 'EOF'
+ip addr flush dev eth0
+ip addr add 10.90.2.3/24 dev eth0
+ip link set eth0 up
+ip route replace default via 10.90.2.1
+echo "nameserver 192.168.122.1" > /etc/resolv.conf
+EOF
+bash /root/tedd.sh
+ping -c 2 8.8.8.8
+```
+```bash
+apt-get update
+apt-get install bind9 dnsutils -y
+```
+
+**C2. Options**
+```bash
+cat > /etc/bind/named.conf.options << 'EOF'
+options {
+    directory "/var/cache/bind";
+    forwarders {
+        192.168.122.1;
+    };
+    dnssec-validation no;
+    listen-on { any; };
+    allow-query { any; };
+};
+EOF
+```
+
+**C3. Deklarasi dua zona slave**
+```bash
+cat > /etc/bind/named.conf.local << 'EOF'
+zone "k53.com" {
+    type slave;
+    file "/var/cache/bind/k53.com";
+    masters { 10.90.2.2; };
+};
+
+zone "90.10.in-addr.arpa" {
+    type slave;
+    file "/var/cache/bind/90.10.in-addr.arpa";
+    masters { 10.90.2.2; };
+};
+EOF
+```
+
+**C4. Jalankan named dan cek**
+```bash
+named-checkconf
+pkill named; sleep 1; named
+sleep 3
+ls -l /var/cache/bind/
+dig @10.90.2.3 k53.com SOA +short
+```
+File `k53.com` dan `90.10.in-addr.arpa` harus muncul, dan serial `k53.com` harus `2026092904`.
+
+**C5. Hostname dan resolver akhir**
+```bash
+hostname tedd; echo tedd > /etc/hostname
+echo -e "127.0.0.1 localhost\n10.90.2.3 tedd.k53.com tedd" > /etc/hosts
+echo -e "nameserver 10.90.2.2\nnameserver 10.90.2.3\nnameserver 192.168.122.1" > /etc/resolv.conf
+```
+
+### D. Node klien dan gerbang
+
+Setiap blok memasang IP, resolver akhir, hostname, dan `/etc/hosts` sekaligus.
+
+alpha:
+```bash
+N=alpha; IP=10.90.1.2; GW=10.90.1.1
+ip addr flush dev eth0
+ip addr add $IP/24 dev eth0
+ip link set eth0 up
+ip route replace default via $GW
+echo -e "nameserver 10.90.2.2\nnameserver 10.90.2.3\nnameserver 192.168.122.1" > /etc/resolv.conf
+hostname $N; echo $N > /etc/hostname
+echo -e "127.0.0.1 localhost\n$IP $N.k53.com $N" > /etc/hosts
+```
+beta:
+```bash
+N=beta; IP=10.90.1.3; GW=10.90.1.1
+ip addr flush dev eth0
+ip addr add $IP/24 dev eth0
+ip link set eth0 up
+ip route replace default via $GW
+echo -e "nameserver 10.90.2.2\nnameserver 10.90.2.3\nnameserver 192.168.122.1" > /etc/resolv.conf
+hostname $N; echo $N > /etc/hostname
+echo -e "127.0.0.1 localhost\n$IP $N.k53.com $N" > /etc/hosts
+```
+gamma:
+```bash
+N=gamma; IP=10.90.1.4; GW=10.90.1.1
+ip addr flush dev eth0
+ip addr add $IP/24 dev eth0
+ip link set eth0 up
+ip route replace default via $GW
+echo -e "nameserver 10.90.2.2\nnameserver 10.90.2.3\nnameserver 192.168.122.1" > /etc/resolv.conf
+hostname $N; echo $N > /etc/hostname
+echo -e "127.0.0.1 localhost\n$IP $N.k53.com $N" > /etc/hosts
+```
+delta:
+```bash
+N=delta; IP=10.90.5.2; GW=10.90.5.1
+ip addr flush dev eth0
+ip addr add $IP/24 dev eth0
+ip link set eth0 up
+ip route replace default via $GW
+echo -e "nameserver 10.90.2.2\nnameserver 10.90.2.3\nnameserver 192.168.122.1" > /etc/resolv.conf
+hostname $N; echo $N > /etc/hostname
+echo -e "127.0.0.1 localhost\n$IP $N.k53.com $N" > /etc/hosts
+```
+epsilon:
+```bash
+N=epsilon; IP=10.90.5.3; GW=10.90.5.1
+ip addr flush dev eth0
+ip addr add $IP/24 dev eth0
+ip link set eth0 up
+ip route replace default via $GW
+echo -e "nameserver 10.90.2.2\nnameserver 10.90.2.3\nnameserver 192.168.122.1" > /etc/resolv.conf
+hostname $N; echo $N > /etc/hostname
+echo -e "127.0.0.1 localhost\n$IP $N.k53.com $N" > /etc/hosts
+```
+abbey:
+```bash
+N=abbey; IP=10.90.4.2; GW=10.90.4.1
+ip addr flush dev eth0
+ip addr add $IP/24 dev eth0
+ip link set eth0 up
+ip route replace default via $GW
+echo -e "nameserver 10.90.2.2\nnameserver 10.90.2.3\nnameserver 192.168.122.1" > /etc/resolv.conf
+hostname $N; echo $N > /etc/hostname
+echo -e "127.0.0.1 localhost\n$IP $N.k53.com $N" > /etc/hosts
+```
+penny:
+```bash
+N=penny; IP=10.90.3.2; GW=10.90.3.1
+ip addr flush dev eth0
+ip addr add $IP/24 dev eth0
+ip link set eth0 up
+ip route replace default via $GW
+echo -e "nameserver 10.90.2.2\nnameserver 10.90.2.3\nnameserver 192.168.122.1" > /etc/resolv.conf
+hostname $N; echo $N > /etc/hostname
+echo -e "127.0.0.1 localhost\n$IP $N.k53.com $N" > /etc/hosts
+```
+
+### E. Area vault (obladi dan desmond, Apache)
+
+**E1. IP, hostname, resolver**
+
+obladi:
+```bash
+N=obladi; IP=10.90.2.4; GW=10.90.2.1
+ip addr flush dev eth0
+ip addr add $IP/24 dev eth0
+ip link set eth0 up
+ip route replace default via $GW
+echo -e "nameserver 10.90.2.2\nnameserver 10.90.2.3\nnameserver 192.168.122.1" > /etc/resolv.conf
+hostname $N; echo $N > /etc/hostname
+echo -e "127.0.0.1 localhost\n$IP $N.k53.com $N" > /etc/hosts
+```
+desmond:
+```bash
+N=desmond; IP=10.90.2.5; GW=10.90.2.1
+ip addr flush dev eth0
+ip addr add $IP/24 dev eth0
+ip link set eth0 up
+ip route replace default via $GW
+echo -e "nameserver 10.90.2.2\nnameserver 10.90.2.3\nnameserver 192.168.122.1" > /etc/resolv.conf
+hostname $N; echo $N > /etc/hostname
+echo -e "127.0.0.1 localhost\n$IP $N.k53.com $N" > /etc/hosts
+```
+
+**E2. Instal Apache (di obladi dan desmond)**
+```bash
+ping -c 2 google.com
+apt-get update
+apt-get install apache2 curl -y
+```
+
+**E3. Folder /arsip/ dan isinya**
+
+obladi:
+```bash
+N=obladi
+mkdir -p /var/www/html/arsip
+echo "dokumen rahasia 1 dari $N" > /var/www/html/arsip/dokumen1.txt
+echo "dokumen rahasia 2 dari $N" > /var/www/html/arsip/dokumen2.txt
+echo "catatan dari $N" > /var/www/html/arsip/catatan.txt
+echo "<h1>Web statis $N</h1>" > /var/www/html/index.html
+```
+desmond:
+```bash
+N=desmond
+mkdir -p /var/www/html/arsip
+echo "dokumen rahasia 1 dari $N" > /var/www/html/arsip/dokumen1.txt
+echo "dokumen rahasia 2 dari $N" > /var/www/html/arsip/dokumen2.txt
+echo "catatan dari $N" > /var/www/html/arsip/catatan.txt
+echo "<h1>Web statis $N</h1>" > /var/www/html/index.html
+```
+
+**E4. Autoindex dan ServerName (di obladi dan desmond)**
+```bash
+cat > /etc/apache2/conf-available/arsip.conf << 'EOF'
+<Directory /var/www/html/arsip>
+    Options +Indexes
+    AllowOverride None
+    Require all granted
+</Directory>
+EOF
+a2enconf arsip
+echo "ServerName $(hostname).k53.com" > /etc/apache2/conf-available/servername.conf
+a2enconf servername
+```
+
+**E5. Jalankan Apache (di obladi dan desmond)**
+```bash
+apache2ctl configtest
+service apache2 restart
+curl -s http://localhost/arsip/ | grep -E "Index of|txt"
+```
+`configtest` harus `Syntax OK`, dan `curl` harus menampilkan `Index of /arsip` dan file `.txt`. Kalau `service` tidak bekerja, pakai `apache2ctl start`.
+
+### F. Area core (oblada dan molly, Nginx dan PHP-FPM)
+
+**F1. IP, hostname, resolver**
+
+oblada:
+```bash
+N=oblada; IP=10.90.2.6; GW=10.90.2.1
+ip addr flush dev eth0
+ip addr add $IP/24 dev eth0
+ip link set eth0 up
+ip route replace default via $GW
+echo -e "nameserver 10.90.2.2\nnameserver 10.90.2.3\nnameserver 192.168.122.1" > /etc/resolv.conf
+hostname $N; echo $N > /etc/hostname
+echo -e "127.0.0.1 localhost\n$IP $N.k53.com $N" > /etc/hosts
+```
+molly:
+```bash
+N=molly; IP=10.90.2.7; GW=10.90.2.1
+ip addr flush dev eth0
+ip addr add $IP/24 dev eth0
+ip link set eth0 up
+ip route replace default via $GW
+echo -e "nameserver 10.90.2.2\nnameserver 10.90.2.3\nnameserver 192.168.122.1" > /etc/resolv.conf
+hostname $N; echo $N > /etc/hostname
+echo -e "127.0.0.1 localhost\n$IP $N.k53.com $N" > /etc/hosts
+```
+
+**F2. Instal Nginx dan PHP-FPM (di oblada dan molly)**
+```bash
+ping -c 2 google.com
+apt-get update
+apt-get install nginx php-fpm curl -y
+php -v | head -1
+```
+
+**F3. Aplikasi beranda dan profil (di oblada dan molly)**
+
+Beranda:
+```bash
+mkdir -p /var/www/core
+cat > /var/www/core/index.php << 'EOF'
+<h1>Beranda Area Core</h1>
+<p>Dilayani oleh node: <?php echo gethostname(); ?></p>
+<p>IP pengunjung: <?php echo $_SERVER['REMOTE_ADDR']; ?></p>
+<p><a href="/profil">Lihat profil</a></p>
+EOF
+```
+Profil:
+```bash
+cat > /var/www/core/profil.php << 'EOF'
+<h1>Halaman Profil</h1>
+<p>Kelompok: K-53</p>
+<p>Dilayani oleh node: <?php echo gethostname(); ?></p>
+<p><a href="/">Kembali ke beranda</a></p>
+EOF
+chown -R www-data:www-data /var/www/core
+```
+
+**F4. Konfigurasi Nginx dengan rewrite (di oblada dan molly)**
+```bash
+cat > /etc/nginx/sites-available/core << 'EOF'
+server {
+    listen 80 default_server;
+    server_name _;
+    root /var/www/core;
+    index index.php index.html;
+
+    rewrite ^/profil$ /profil.php last;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/run/php/php8.4-fpm.sock;
+    }
+}
+EOF
+```
+```bash
+ln -sf /etc/nginx/sites-available/core /etc/nginx/sites-enabled/core
+rm -f /etc/nginx/sites-enabled/default
+```
+
+**F5. Jalankan PHP-FPM dan Nginx (di oblada dan molly)**
+```bash
+service php8.4-fpm start
+ls /run/php/
+nginx -t
+service nginx restart
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost/profil
+```
+`ls /run/php/` harus menampilkan `php8.4-fpm.sock`, `nginx -t` harus `syntax is ok`, dan `/profil` harus mengembalikan `200`. Kalau versi PHP bukan 8.4, ganti angkanya di `fastcgi_pass` (F4) dan nama service di F5.
+
+### G. Verifikasi akhir
+
+Serial SOA sama di prab dan tedd (jalankan di node mana saja):
+```bash
+dig @10.90.2.2 k53.com SOA +short
+dig @10.90.2.3 k53.com SOA +short
+dig @10.90.2.2 90.10.in-addr.arpa SOA +short
+dig @10.90.2.3 90.10.in-addr.arpa SOA +short
+```
+DNS dari klien (alpha dan delta):
+```bash
+for h in rootkit alpha beta gamma delta epsilon abbey penny obladi desmond oblada molly; do
+  echo -n "$h.k53.com -> "
+  dig +short $h.k53.com
+done
+for h in vault core www static; do echo "== $h =="; dig +short $h.k53.com; done
+```
+Reverse lookup:
+```bash
+for ip in 10.90.4.2 10.90.3.2 10.90.2.4 10.90.2.5 10.90.2.6 10.90.2.7; do
+  echo -n "$ip -> "; dig @10.90.2.3 -x $ip +short | tr '\n' ' '; echo
+done
+```
+Web (lewat hostname, dari alpha atau delta):
+```bash
+curl http://vault.k53.com/arsip/
+curl http://core.k53.com/
+curl http://core.k53.com/profil
+```
