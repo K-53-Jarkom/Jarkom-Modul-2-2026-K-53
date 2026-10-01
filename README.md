@@ -1,7 +1,5 @@
 ## Jarkom-Modul-2-2026-K-53
-Data Communication and Computer Networks Practicum
 
-> Konfigurasi node Docker di GNS3 hilang saat node di-restart. Karena itu semua konfigurasi disimpan sebagai script di `/root` pada masing-masing node, lalu dijalankan dengan `bash /root/<nama>.sh`.
 
 ### Soal 1 : Konfigurasi IP Address dan Default Gateway
 
@@ -1248,3 +1246,490 @@ curl http://core.k53.com/profil
 Semua harus tampil, dan `/profil` bekerja tanpa akhiran `.php`. Untuk `core.k53.com`, DNS mengembalikan dua IP, sehingga jawabannya bisa datang dari oblada atau molly (lihat baris "Dilayani oleh node"). Lewat browser, buka `http://core.k53.com/` lalu klik link profil.
 
 > Pengujian wajib memakai hostname (`oblada.k53.com`, `molly.k53.com`, atau `core.k53.com`), bukan IP address.
+
+## 11. Konfigurasi Reverse Proxy (Load Balancer)
+Membuat Load Balancer dengan mengonfigurasi Penny menggunakan Apache sebagai reverse proxy menuju node di area *vault* (Obladi & Desmond), dan Abbey menggunakan Nginx sebagai reverse proxy menuju node di area *core* (Oblada & Molly). Tujuannya adalah mendistribusikan lalu lintas jaringan serta meneruskan identitas asli pengunjung menggunakan header `Host` dan `X-Real-IP`.
+
+**Langkah Pengerjaan & Script:**
+
+Di **Penny (Apache)**, install apache, aktifkan modul proxy, lalu buat konfigurasi virtual host:
+```bash
+apt-get update
+apt-get install apache2 -y
+a2enmod proxy proxy_http proxy_balancer lbmethod_byrequests headers
+
+cat > /etc/apache2/sites-available/penny-proxy.conf << 'EOF'
+<VirtualHost *:80>
+ServerName www.k53.com
+ProxyPreserveHost On
+<Proxy balancer://vaultcluster>
+BalancerMember http://10.90.2.4
+BalancerMember http://10.90.2.5
+ProxySet lbmethod=byrequests
+</Proxy>
+ProxyPass / balancer://vaultcluster/
+ProxyPassReverse / balancer://vaultcluster/
+RequestHeader set X-Real-IP "%{REMOTE_ADDR}s"
+</VirtualHost>
+EOF
+
+a2ensite penny-proxy
+a2dissite 000-default
+apache2ctl configtest
+service apache2 restart
+```
+![alt text](<assets/Screenshot 2026-09-30 160929.png>)
+
+Di **Abbey (Nginx)**, install nginx dan atur upstream server:
+```bash
+apt-get update
+apt-get install nginx -y
+
+cat > /etc/nginx/sites-available/abbey-proxy << 'EOF'
+upstream core_cluster {
+server 10.90.2.6;
+server 10.90.2.7;
+}
+server {
+listen 80;
+server_name static.k53.com;
+location / {
+proxy_pass http://core_cluster;
+proxy_set_header Host $host;
+proxy_set_header X-Real-IP $remote_addr;
+}
+}
+EOF
+
+ln -sf /etc/nginx/sites-available/abbey-proxy /etc/nginx/sites-enabled/abbey-proxy
+rm -f /etc/nginx/sites-enabled/default
+nginx -t
+service nginx restart
+```
+![alt text](<assets/Screenshot 2026-09-30 160745.png>)
+
+Tes distribusi di **Alpha** (Klien):
+```bash
+for i in {1..4}; do curl -s http://static.k53.com/ | grep -i "Dilayani"; done
+for i in {1..4}; do curl -s http://www.k53.com/ | grep -i "Web statis"; done
+```
+![alt text](<assets/Screenshot 2026-09-30 161519.png>)
+---
+
+## 12. Keamanan Autentikasi (Basic Authentication)
+Untuk melindungi dokumen rahasia, kita diminta menerapkan *basic authentication* khusus di direktori atau path `/admin` pada node Penny. Pengunjung hanya bisa masuk dengan *username* `prabs` dan *password* `pakar_pinter_jadi_gob***`.
+
+**Langkah Pengerjaan & Script:**
+
+Di **Penny**, buat kredensial `.htpasswd` dan tambahkan aturan keamanan pada konfigurasi proxy sebelumnya:
+```bash
+apt-get install apache2-utils -y
+htpasswd -bc /etc/apache2/.htpasswd prabs pakar_pinter_jadi_gob***
+
+cat > /etc/apache2/sites-available/penny-proxy.conf << 'EOF'
+<VirtualHost *:80>
+    ServerName www.k53.com
+    ProxyPreserveHost On
+
+    <Proxy balancer://vaultcluster>
+        BalancerMember http://10.90.2.4
+        BalancerMember http://10.90.2.5
+        ProxySet lbmethod=byrequests
+    </Proxy>
+
+    ProxyPass / balancer://vaultcluster/
+    ProxyPassReverse / balancer://vaultcluster/
+
+    RequestHeader set X-Real-IP "%{REMOTE_ADDR}s"
+
+    <Location /admin>
+        AuthType Basic
+        AuthName "Restricted Area"
+        AuthUserFile /etc/apache2/.htpasswd
+        Require valid-user
+    </Location>
+</VirtualHost>
+EOF
+
+
+apache2ctl configtest
+service apache2 restart
+```
+![alt text](<assets/Screenshot 2026-09-30 180329.png>)
+
+Di **Obladi (10.90.2.4)** & **Desmond (10.90.2.5)**, siapkan halamannya:
+```bash
+mkdir -p /var/www/html/admin
+echo "Ini adalah ruang penyimpanan dokumen rahasia sindikat." > /var/www/html/admin/index.html
+```
+![alt text](<assets/Screenshot 2026-09-30 180352.png>)
+![alt text](<assets/Screenshot 2026-09-30 180425.png>)
+Uji koneksi dengan *credential* dari **Alpha**:
+```bash
+curl -u prabs:pakar_pinter_jadi_gob*** -I http://www.k53.com/admin/
+curl -u prabs:pakar_pinter_jadi_gob*** http://www.k53.com/admin/
+```
+![alt text](<assets/Screenshot 2026-09-30 180026.png>)
+---
+
+## 13. URL Redirection
+Jika pengguna mengakses melalui IP atau domain *default* (non-kanonik), mereka harus dialihkan (di-redirect). Akses ke Penny dialihkan permanen (301) ke `www.k53.com`, sedangkan Abbey dialihkan sementara (302) ke `static.k53.com`.
+
+**Langkah Pengerjaan & Script:**
+
+Di **Penny (Redirect 301)**:
+```bash
+cat > /etc/apache2/sites-available/penny-redirect.conf << 'EOF'
+<VirtualHost *:80>
+ServerName penny.k53.com
+ServerAlias 10.90.3.2
+Redirect 301 / http://www.k53.com/
+</VirtualHost>
+EOF
+
+a2ensite penny-redirect.conf
+a2dissite 000-default.conf
+service apache2 reload
+```
+
+Di **Abbey (Redirect 302)**:
+```bash
+service nginx stop
+apt-get update && apt-get install -y apache2
+mkdir -p /etc/apache2/sites-available
+
+cat > /etc/apache2/sites-available/abbey-redirect.conf << 'EOF'
+<VirtualHost *:80>
+ServerName abbey.k53.com
+ServerAlias 10.90.4.2
+Redirect 302 / http://static.k53.com/
+</VirtualHost>
+EOF
+
+a2ensite abbey-redirect.conf
+a2dissite 000-default.conf
+service apache2 restart
+```
+
+Uji hasil redirect dari **Alpha**:
+```bash
+//dipenny (301 Moved Permanently)
+curl -I http://penny.k53.com
+curl -I http://10.90.3.2
+
+//di abbey (302 Found)
+curl -I http://abbey.k53.com
+curl -I http://10.90.4.2
+```
+![alt text](<assets/Screenshot 2026-09-30 181649.png>)
+![alt text](<assets/Screenshot 2026-09-30 181627.png>)
+---
+
+## 14. Real IP Logging
+
+Secara *default*, *log server backend* hanya akan mencatat IP dari server proxy, bukan IP pengguna (klien). Memodifikasi konfigurasi log di server backend agar bisa mengekstrak IP riil dari klien lewat header `X-Forwarded-For`.
+
+**Langkah Pengerjaan & Script:**
+
+Di backend Apache (**Obladi** & **Desmond**):
+```bash
+sed -i 's/LogFormat "%h/LogFormat "%{X-Forwarded-For}i/g' /etc/apache2/apache2.conf
+service apache2 restart
+```
+![alt text](<assets/Screenshot 2026-09-30 185741.png>)
+![alt text](<assets/Screenshot 2026-09-30 185753.png>)
+
+Di backend Nginx (**Oblada** & **Molly**):
+```bash
+cat > /etc/nginx/conf.d/realip.conf << 'EOF'
+real_ip_header X-Forwarded-For;
+set_real_ip_from 10.90.3.2;
+set_real_ip_from 10.90.4.2;
+set_real_ip_from 127.0.0.1;
+EOF
+
+nginx -t
+service nginx restart
+sed -i 's/\$remote_addr/\\$remote_addr/g' /etc/nginx/nginx.conf
+service nginx reload
+```
+![alt text](<assets/Screenshot 2026-09-30 185815.png>)
+![alt text](<assets/Screenshot 2026-09-30 185830.png>)
+
+Tes dengan membuka web dari **Alpha**, lalu cek log dari backend:
+```bash
+# Di Alpha:
+curl http://www.k53.com/arsip/
+curl http://core.k53.com/
+
+//Di obladi / desmond: 
+tail -n 1 /var/log/apache2/access.log
+
+//Di oblada / molly: 
+tail -n 1 /var/log/nginx/access.log
+
+```
+![alt text](<assets/Screenshot 2026-09-30 185843.png>)
+![alt text](<assets/Screenshot 2026-09-30 185859.png>)
+![alt text](<assets/Screenshot 2026-09-30 185917.png>)
+![alt text](<assets/Screenshot 2026-09-30 185929.png>)
+![alt text](<assets/Screenshot 2026-09-30 185938.png>)
+---
+
+## 15. Standalone Proxy (Pengecualian Proxy)
+Membuat *path* tersendiri di Load Balancer yang dilayani secara mandiri (lokal), bukan di*forward* ke server backend. Di Penny dibuat *path* `/eternal` (berisi file PHP yang bisa dirender), dan di Abbey dibuat *path* `/orion` (berisi HTML statis).
+
+**Langkah Pengerjaan & Script:**
+
+Di **Penny (Apache)**:
+```bash
+mkdir -p /var/www/eternal
+echo '<?php echo "Halo dari PHP Eternal di Penny!"; ?>' > /var/www/eternal/index.php
+chown -R www-data:www-data /var/www/eternal
+chmod -R 755 /var/www/eternal
+
+apt update && apt install -y libapache2-mod-php
+a2enmod php*
+service apache2 restart
+echo '<?php echo "Halo dari PHP Eternal di Penny!\n"; ?>' > /var/www/eternal/index.php
+```
+```bash
+nano /etc/apache2/sites-available/penny-proxy.conf
+```
+```bash
+<VirtualHost *:80>
+    ServerName www.k53.com
+    ProxyPreserveHost On
+
+    ProxyPass /eternal !
+
+    Alias /eternal /var/www/eternal
+    <Directory /var/www/eternal>
+        Options Indexes FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+    
+    <Location /eternal>
+        AddHandler application/x-httpd-php .php
+    </Location>
+
+    <Proxy balancer://vaultcluster>
+        BalancerMember http://10.90.2.4
+        BalancerMember http://10.90.2.5
+        ProxySet lbmethod=byrequests
+    </Proxy>
+
+    ProxyPass / balancer://vaultcluster/
+    ProxyPassReverse / balancer://vaultcluster/
+
+    RequestHeader set X-Real-IP "%{REMOTE_ADDR}s"
+
+    <Location /admin>
+        AuthType Basic
+        AuthName "Restricted Area"
+        AuthUserFile /etc/apache2/.htpasswd
+        Require valid-user
+    </Location>
+</VirtualHost>
+```
+```bash
+apache2ctl configtest
+service apache2 restart
+```
+![alt text](<assets/Screenshot 2026-09-30 192656.png>)
+
+Di **Abbey (Apache / Nginx fallback)**:
+```bash
+mkdir -p /var/www/orion
+echo "<h1>Halaman Statis Orion di Abbey</h1>" > /var/www/orion/index.html
+```
+```bash
+nano /etc/apache2/sites-available/abbey-redirect.conf
+```
+```bash
+<VirtualHost *:80>
+    ServerName abbey.k53.com
+    ServerAlias 10.90.4.2
+
+    RewriteEngine On
+    # Kecualikan /orion agar tidak ikut ter-redirect ke static.k53.com
+    RewriteCond %{REQUEST_URI} !^/orion
+    RewriteRule ^/(.*)$ http://static.k53.com/$1 [R=302,L]
+
+    Alias /orion /var/www/orion
+    <Directory /var/www/orion>
+        Options Indexes FollowSymLinks
+        AllowOverride None
+        Require all granted
+    </Directory>
+</VirtualHost>
+```
+```bash
+a2enmod rewrite
+apache2ctl configtest
+service apache2 restart
+
+```
+![alt text](<assets/Screenshot 2026-09-30 192756.png>)
+
+Cek diclient lain (Alpha)
+```bash
+curl http://www.k53.com/eternal/index.php
+
+curl http://static.k53.com/orion/index.html
+```
+![alt text](<assets/Screenshot 2026-09-30 192729.png>)
+![alt text](<assets/Screenshot 2026-09-30 192816.png>)
+---
+
+## 16. Benchmark Server dengan ApacheBench (ab)
+Menguji ketahanan dan kecepatan respons *Load Balancer* dengan memberikan 250 permintaan sekaligus secara serentak *(stress test)* dengan utilitas `ab`. 
+
+**Langkah Pengerjaan & Script:**
+
+Di node **Alpha** (Klien):
+```bash
+apt update && apt install -y apache2-utils
+ab -n 250 -c 10 http://www.k53.com/
+ab -n 250 -c 10 http://static.k53.com/
+```
+![alt text](<assets/Screenshot 2026-09-30 193550.png>)
+![alt text](<assets/Screenshot 2026-09-30 193234.png>)
+
+Hasil analisis:
+- Untuk `static.k53.com`:
+Complete requests: 250 (Semua berhasil diproses).
+Failed requests: 0 (Tidak ada satu pun request yang gagal, server sangat stabil).
+Requests per second: 3705.13 (Kecepatan penanganan server sangat tinggi dan ngebut).
+- Untuk `[www.k53.com](https://www.k53.com)`:
+Complete requests: 250 (Berhasil dieksekusi).
+ada Failed requests: 125 (karena ada Length: 125). adanya Failed requests (Length) karena perbedaan respons load balancer
+
+---
+
+## 17. Penambahan TXT Record DNS
+Menambahkan catatan informasi teks (TXT Record) untuk domain klien. Jika kita melakukan pencarian jenis TXT ke nama domain Klien (seperti `alpha.k53.com`), hasilnya adalah teks yang dispesifikasikan (contohnya `alpha`).
+
+**Langkah Pengerjaan & Script:**
+
+Di node **Prab (DNS Server)**, edit berkas zone file lokal:
+cek dulu filenya ada dimana dan namanya apa
+```bash
+cat /etc/bind/named.conf.local
+```
+![alt text](assets/image.png)
+```bash
+nano /etc/bind/k53/k53.com
+```
+![alt text](<assets/Screenshot 2026-09-30 200755.png>)
+tambahkan
+```bash
+alpha   IN  TXT  "alpha"
+beta    IN  TXT  "beta"
+gamma   IN  TXT  "gamma"
+delta   IN  TXT  "delta"
+epsilon IN  TXT  "epsilon"
+```
+Lalu naikkan nilai Serial pada baris SOA.
+![alt text](<assets/Screenshot 2026-09-30 200834.png>)
+
+```bash
+pkill named
+named
+```
+
+Tes dengan `nslookup` dari klien lainnya (Alpha):
+```bash
+nslookup -type=TXT alpha.k53.com
+```
+![alt text](<assets/Screenshot 2026-10-01 105050.png>)
+---
+
+## 18. Modifikasi A Record Sementara (Pengujian Cache DNS / TTL)
+Membuktikan konsep pembaruan pada *DNS Cache* klien yang diatur oleh nilai TTL (*Time To Live*). Nilai TTL diset jadi 15 detik, agar perubahan alamat IP sementara bisa segera dirasakan oleh Klien tanpa *cache* terlalu lama.
+
+**Langkah Pengerjaan & Script:**
+
+Di node **Prab (DNS Server)**:
+```bash
+nano /etc/bind/k53/k53.com
+
+# Ubah record abbey menjadi: abbey 15 IN A 192.168.99.99
+# *Naikkan nilai Serial*
+
+pkill named
+named
+grep abbey /etc/bind/k53/k53.com
+```
+![alt text](<assets/Screenshot 2026-09-30 202104.png>)
+![alt text](<assets/Screenshot 2026-09-30 203314.png>)
+Pengujian siklus *cache* di **Alpha**:
+```bash
+nslookup abbey.k53.com
+sleep 15
+nslookup abbey.k53.com
+```
+![alt text](<assets/Screenshot 2026-09-30 202928.png>)
+---
+
+## 19. CNAME Record ke Domain Eksternal 
+Menghubungkan *(binding)* subdomain internal kita ke alamat domain luar/publik yang ada di internet menggunakan tipe CNAME (Alias), sehingga saat diakses yang muncul adalah konten asli situs eksternal.
+
+**Langkah Pengerjaan & Script:**
+
+Di node **Prab (DNS Server)**:
+```bash
+nano /etc/bind/k53/k53.com
+
+# Tambahkan CNAME di paling bawah file:
+outbound IN CNAME http.badssl.com.
+# *Naikkan nilai Serial*
+
+pkill named
+named
+```
+![alt text](<assets/Screenshot 2026-09-30 203840.png>)
+
+Cek binding dari **Alpha**:
+```bash
+nslookup outbound.k53.com
+curl http://outbound.k53.com
+curl -s http://outbound.k53.com | grep -i "<title>"
+```
+![alt text](<assets/Screenshot 2026-09-30 204009.png>)
+
+Cek juga dialpha seperti ini:
+```bash
+curl -I http://outbound.k53.com
+curl -s http://outbound.k53.com | grep -i "<title>"
+```
+![alt text](<assets/Screenshot 2026-10-01 110332.png>)
+---
+
+## 20. Pemulihan Kondisi / Rollback DNS
+
+Memastikan server tidak tertinggal dengan konfigurasi fiktif. Perintah ini untuk mengembalikan alamat IP domain abbey ke konfigurasi aslinya sebelum poin nomor 18.
+
+**Langkah Pengerjaan & Script:**
+
+Di node **Prab (DNS Server)**:
+```bash
+nano /etc/bind/k53/k53.com
+
+# Ubah IP abbey ke aslinya:
+abbey IN A 10.90.4.2
+# *Naikkan nilai Serial*
+
+pkill named
+named
+ps aux | grep named
+```
+![alt text](<assets/Screenshot 2026-09-30 205838.png>)
+![alt text](<assets/Screenshot 2026-09-30 210149.png>)
+
+Tes kembali resolusi domain di **Alpha**:
+```bash
+nslookup abbey.k53.com
+```
+![alt text](<assets/Screenshot 2026-09-30 210208.png>)
