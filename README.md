@@ -1462,10 +1462,10 @@ Tes dengan membuka web dari **Alpha**, lalu cek log dari backend:
 curl http://www.k53.com/arsip/
 curl http://core.k53.com/
 
-//Di obladi / desmond: 
+#Di obladi / desmond: 
 tail -n 1 /var/log/apache2/access.log
 
-//Di oblada / molly: 
+#Di oblada / molly: 
 tail -n 1 /var/log/nginx/access.log
 
 ```
@@ -1655,7 +1655,8 @@ Di node **Prab (DNS Server)**:
 ```bash
 nano /etc/bind/k53/k53.com
 
-# Ubah record abbey menjadi: abbey 15 IN A 192.168.99.99
+# Ubah record abbey menjadi: 
+abbey 15 IN A 192.168.99.99
 # *Naikkan nilai Serial*
 
 pkill named
